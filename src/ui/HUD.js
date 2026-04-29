@@ -82,7 +82,7 @@ export class HUD {
   // ─── Debug overlay ────────────────────────────────────────────────────────
 
   updateDebug(player, chunkCount, fps, time, mobCount) {
-    if (!this._debug || this._debug.style.display === 'none') return;
+    if (!this._debug || this._debug.style.display !== 'block') return;
     const { x, y, z } = player;
     const slot = player.inventory?.hotbarSlot(player.inventory.selectedSlot);
     const weapon = slot && ItemRegistry.get(slot.id);
@@ -98,6 +98,39 @@ export class HUD {
 
   showInventory(show) {
     if (this._invEl) this._invEl.classList.toggle('hidden', !show);
+  }
+
+  updateInventoryGrid(inventory) {
+    const main = document.getElementById('inv-main-grid');
+    const hbar = document.getElementById('inv-hotbar-grid');
+    if (!main || !hbar) return;
+
+    const makeSlot = slot => {
+      const div = document.createElement('div');
+      div.className = 'inv-slot';
+      if (slot.id !== B.AIR && slot.count > 0) {
+        div.style.background = this._itemColor(slot.id);
+        const item = ItemRegistry.get(slot.id);
+        if (item) {
+          const ico = document.createElement('span');
+          ico.style.cssText = 'font-size:14px;pointer-events:none;';
+          ico.textContent = '⚔';
+          div.appendChild(ico);
+        }
+        if (slot.count > 1) {
+          const cnt = document.createElement('span');
+          cnt.className = 'slot-count';
+          cnt.textContent = slot.count;
+          div.appendChild(cnt);
+        }
+      }
+      return div;
+    };
+
+    main.innerHTML = '';
+    inventory.mainSlots().forEach(s => main.appendChild(makeSlot(s)));
+    hbar.innerHTML = '';
+    inventory.hotbarSlots().forEach(s => hbar.appendChild(makeSlot(s)));
   }
 
   isInventoryOpen() {

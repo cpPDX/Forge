@@ -149,6 +149,7 @@ export class Game {
   craft(idx) {
     this._crafting.craftByIndex(idx, this._inventory);
     this._hud.updateHotbar(this._inventory);
+    this._hud.updateInventoryGrid(this._inventory);
     this._refreshCraftingUI();
   }
 
@@ -228,7 +229,10 @@ export class Game {
     if (input.inventory) {
       this._inventoryOpen = !this._inventoryOpen;
       this._hud.showInventory(this._inventoryOpen);
-      if (this._inventoryOpen) this._refreshCraftingUI();
+      if (this._inventoryOpen) {
+        this._hud.updateInventoryGrid(this._inventory);
+        this._refreshCraftingUI();
+      }
     }
 
     // Flashlight toggle

@@ -251,6 +251,7 @@ export class Player {
 
     const slot = this.inventory.hotbarSlot(this.inventory.selectedSlot);
     if (!slot || slot.id === B.AIR || slot.count <= 0) return;
+    if (!BlockRegistry.get(slot.id)) return; // non-block items can't be placed
 
     const [bx, by, bz] = this.targeted.pos;
     const [fx, fy, fz] = this.targeted.face;

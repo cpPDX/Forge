@@ -1,70 +1,72 @@
-import { DAY_DURATION, TIME } from '../utils/constants.js';
+import * as THREE from 'three';
+import { DAY_MS } from '../utils/constants.js';
 
-const SKY_COLORS = [
-  { t: 0,          color: [5, 5, 20] },       // midnight
-  { t: TIME.DAWN,  color: [30, 15, 50] },      // pre-dawn
-  { t: TIME.DAY,   color: [100, 160, 255] },   // day
-  { t: TIME.DUSK,  color: [255, 120, 60] },    // dusk
-  { t: TIME.NIGHT, color: [5, 5, 20] },        // night
-  { t: 1,          color: [5, 5, 20] },
+const SKY = [
+  { t: 0.00, sky: 0x050a1a, fog: 0x050a1a, amb: 0.05 },
+  { t: 0.20, sky: 0x050a1a, fog: 0x050a1a, amb: 0.05 },
+  { t: 0.25, sky: 0xf5a050, fog: 0xd08840, amb: 0.35 },
+  { t: 0.30, sky: 0x87ceeb, fog: 0xbbd8f0, amb: 0.70 },
+  { t: 0.50, sky: 0x87ceeb, fog: 0xc8e8ff, amb: 1.00 },
+  { t: 0.70, sky: 0x87ceeb, fog: 0xbbd8f0, amb: 0.70 },
+  { t: 0.75, sky: 0xf08030, fog: 0xd07828, amb: 0.35 },
+  { t: 0.80, sky: 0x050a1a, fog: 0x050a1a, amb: 0.05 },
+  { t: 1.00, sky: 0x050a1a, fog: 0x050a1a, amb: 0.05 },
 ];
 
-function lerpColor(a, b, t) {
-  return [
-    Math.round(a[0] + (b[0] - a[0]) * t),
-    Math.round(a[1] + (b[1] - a[1]) * t),
-    Math.round(a[2] + (b[2] - a[2]) * t),
-  ];
+function lerpHex(a, b, t) {
+  const ar = (a >> 16) & 0xff, ag = (a >> 8) & 0xff, ab = a & 0xff;
+  const br = (b >> 16) & 0xff, bg = (b >> 8) & 0xff, bb = b & 0xff;
+  const r = Math.round(ar + (br - ar) * t);
+  const g = Math.round(ag + (bg - ag) * t);
+  const bl = Math.round(ab + (bb - ab) * t);
+  return (r << 16 | g << 8 | bl) >>> 0;
 }
 
-function toHex(rgb) {
-  return '#' + rgb.map(v => v.toString(16).padStart(2, '0')).join('');
+function sampleSky(dayFrac) {
+  for (let i = 1; i < SKY.length; i++) {
+    if (dayFrac <= SKY[i].t) {
+      const prev = SKY[i - 1], next = SKY[i];
+      const f = (dayFrac - prev.t) / (next.t - prev.t);
+      return {
+        sky: lerpHex(prev.sky, next.sky, f),
+        fog: lerpHex(prev.fog, next.fog, f),
+        amb: prev.amb + (next.amb - prev.amb) * f,
+      };
+    }
+  }
+  return { sky: 0x87ceeb, fog: 0xc8e8ff, amb: 1.0 };
 }
 
 export class TimeSystem {
-  constructor(initialTime = 0.35) {
-    this.t = initialTime; // 0=midnight, 0.5=noon
+  constructor() {
+    this._elapsed = 0;
+    this.dayFrac  = 0.3;
   }
 
-  update(delta) {
-    this.t = (this.t + delta / DAY_DURATION) % 1;
+  update(dt) {
+    this._elapsed += dt * 1000;
+    this.dayFrac = (this._elapsed % DAY_MS) / DAY_MS;
   }
 
-  get isDay()   { return this.t >= TIME.DAY  && this.t < TIME.DUSK; }
-  get isNight() { return this.t >= TIME.NIGHT || this.t < TIME.DAWN; }
-  get isDawn()  { return this.t >= TIME.DAWN  && this.t < TIME.DAY; }
-  get isDusk()  { return this.t >= TIME.DUSK  && this.t < TIME.NIGHT; }
+  applyToScene(scene, renderer, ambientLight, sunLight) {
+    const { sky, fog, amb } = sampleSky(this.dayFrac);
+    renderer.setClearColor(sky);
+    if (scene.fog) scene.fog.color.setHex(fog);
+    ambientLight.intensity = amb * 0.6;
 
-  get ambientLight() {
-    if (this.isDay)   return 1.0;
-    if (this.isNight) return 0.12;
-    if (this.isDawn) {
-      const p = (this.t - TIME.DAWN) / (TIME.DAY - TIME.DAWN);
-      return 0.12 + p * 0.88;
-    }
-    const p = (this.t - TIME.DUSK) / (TIME.NIGHT - TIME.DUSK);
-    return 1.0 - p * 0.88;
+    const angle = this.dayFrac * Math.PI * 2 - Math.PI / 2;
+    sunLight.position.set(Math.cos(angle) * 100, Math.sin(angle) * 100, 50);
+    sunLight.intensity = Math.max(0, Math.sin(angle + Math.PI / 2));
   }
 
-  get skyColor() {
-    const t = this.t;
-    for (let i = 0; i < SKY_COLORS.length - 1; i++) {
-      const a = SKY_COLORS[i], b = SKY_COLORS[i + 1];
-      if (t >= a.t && t <= b.t) {
-        const p = (t - a.t) / (b.t - a.t);
-        return toHex(lerpColor(a.color, b.color, p));
-      }
-    }
-    return '#050514';
-  }
+  get isDay() { return this.dayFrac > 0.25 && this.dayFrac < 0.75; }
 
   get hourString() {
-    const totalMinutes = Math.floor(this.t * 24 * 60);
-    const h = Math.floor(totalMinutes / 60) % 24;
-    const m = totalMinutes % 60;
-    return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+    const h = Math.floor(this.dayFrac * 24);
+    const m = Math.floor((this.dayFrac * 24 - h) * 60);
+    return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`;
   }
 
-  serialize() { return { t: this.t }; }
-  deserialize(d) { if (d?.t !== undefined) this.t = d.t; }
+  serialize() { return { elapsed: this._elapsed }; }
+  load(data)  { if (data?.elapsed != null) this._elapsed = data.elapsed; }
 }

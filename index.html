@@ -3,73 +3,285 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <title>FORGE — Survival Game</title>
+  <title>FORGE</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    html, body {
-      width: 100%;
-      height: 100%;
-      background: #000;
-      overflow: hidden;
-      touch-action: none;
+    body { background: #000; overflow: hidden; touch-action: none; }
+    canvas { display: block; position: fixed; inset: 0; width: 100% !important; height: 100% !important; }
+
+    /* HUD layer */
+    #hud {
+      position: fixed; inset: 0;
+      pointer-events: none;
+      user-select: none;
+      font-family: 'Courier New', monospace;
     }
-    #game-container {
-      position: fixed;
-      inset: 0;
-      overflow: hidden;
+
+    /* Crosshair */
+    .crosshair {
+      position: absolute;
+      top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      width: 24px; height: 24px;
     }
-    canvas {
-      display: block;
-      image-rendering: pixelated;
-      image-rendering: crisp-edges;
+    .crosshair::before, .crosshair::after {
+      content: '';
+      position: absolute;
+      background: rgba(255,255,255,0.85);
+      box-shadow: 0 0 2px #000;
     }
-    #rotate-msg {
+    .crosshair::before { width: 2px; height: 24px; left: 11px; top: 0; }
+    .crosshair::after  { width: 24px; height: 2px; left: 0; top: 11px; }
+
+    /* Bar row */
+    #status-row {
+      position: absolute;
+      bottom: 62px; left: 50%;
+      transform: translateX(-50%);
+      display: flex; gap: 8px; align-items: center;
+    }
+    .bar-bg {
+      width: 90px; height: 9px;
+      background: rgba(0,0,0,0.5);
+      border: 1px solid #444;
+    }
+    #health-bar { background: #c00; height: 100%; transition: width 0.3s; }
+    #hunger-bar { background: #a60; height: 100%; transition: width 0.3s; }
+    .bar-icon { font-size: 13px; }
+
+    /* Hotbar */
+    #hotbar {
+      position: absolute;
+      bottom: 10px; left: 50%;
+      transform: translateX(-50%);
+      display: flex; gap: 3px;
+    }
+    .hotbar-slot {
+      width: 46px; height: 46px;
+      border: 2px solid #555;
+      background: rgba(0,0,0,0.55);
+      position: relative; flex-shrink: 0;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .hotbar-slot.selected { border-color: #fff; box-shadow: 0 0 0 1px #fff inset; }
+    .slot-count {
+      position: absolute; bottom: 2px; right: 3px;
+      font-size: 10px; color: #fff; text-shadow: 1px 1px 0 #000;
+      pointer-events: none;
+    }
+
+    /* Block name label */
+    #block-label {
+      position: absolute;
+      bottom: 115px; left: 50%;
+      transform: translateX(-50%);
+      font-size: 11px; color: #ddd;
+      text-shadow: 1px 1px 0 #000;
+      opacity: 0; transition: opacity 0.15s;
+      white-space: nowrap;
+    }
+
+    /* Debug */
+    #debug {
+      position: absolute;
+      top: 6px; left: 8px;
+      font-size: 11px; color: #fff;
+      text-shadow: 1px 1px 0 #000;
+      line-height: 1.7;
       display: none;
-      position: fixed;
-      inset: 0;
-      background: #000;
-      color: #fff;
-      font-family: sans-serif;
-      font-size: 20px;
-      text-align: center;
-      align-items: center;
-      justify-content: center;
-      flex-direction: column;
-      gap: 16px;
-      z-index: 9999;
     }
-    #rotate-msg span { font-size: 56px; }
-    @media screen and (orientation: portrait) and (pointer: coarse) {
-      #rotate-msg { display: flex; }
+
+    /* Click-to-play */
+    #click-to-play {
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,0.72);
+      color: #fff;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      gap: 16px; cursor: pointer;
+      pointer-events: all; z-index: 100;
+    }
+    #click-to-play h1 { font-size: 52px; letter-spacing: 6px; color: #ff9900; text-shadow: 3px 3px 0 #000; }
+    #click-to-play p  { font-size: 18px; color: #aaa; }
+    #click-to-play.hidden { display: none; }
+
+    /* Inventory overlay */
+    #inventory-panel {
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,0.6);
+      display: flex; align-items: center; justify-content: center;
+      z-index: 50; pointer-events: all;
+    }
+    #inventory-panel.hidden { display: none; }
+    #inv-inner {
+      background: #c6c6c6;
+      border: 3px solid #555;
+      padding: 14px;
+      min-width: 340px; max-width: 90vw;
+      max-height: 85vh; overflow-y: auto;
+    }
+    #inv-inner h2 { font-size: 13px; color: #333; margin-bottom: 8px; font-family: monospace; }
+    .inv-grid {
+      display: grid; grid-template-columns: repeat(9, 36px);
+      gap: 3px; margin-bottom: 6px;
+    }
+    .inv-slot {
+      width: 36px; height: 36px;
+      background: #8b8b8b;
+      border: 2px solid #373737;
+      border-right-color: #fff; border-bottom-color: #fff;
+      position: relative;
+    }
+    #craft-section { margin-top: 10px; border-top: 2px solid #aaa; padding-top: 8px; }
+    #craft-section h3 { font-size: 12px; color: #444; margin-bottom: 6px; font-family: monospace; }
+    #crafting-list { max-height: 180px; overflow-y: auto; }
+    .craft-entry {
+      display: flex; flex-direction: column;
+      padding: 5px 8px; cursor: pointer;
+      border-bottom: 1px solid #aaa;
+    }
+    .craft-entry:hover { background: #bbb; }
+    .craft-name { font-size: 12px; font-weight: bold; color: #222; font-family: monospace; }
+    .craft-ing  { font-size: 10px; color: #555; font-family: monospace; }
+    #inv-close-btn {
+      display: block; width: 100%; margin-top: 10px;
+      padding: 6px; background: #888; border: none;
+      cursor: pointer; font-family: monospace; font-size: 12px;
+    }
+
+    /* Touch controls */
+    #touch-ui {
+      display: none;
+      position: fixed; inset: 0;
+      pointer-events: none; z-index: 10;
+    }
+    @media (pointer: coarse) { #touch-ui { display: block; } }
+
+    #joy-zone {
+      position: absolute; left: 0; bottom: 0;
+      width: 48%; height: 55%; pointer-events: all;
+    }
+    #joy-base {
+      position: absolute; width: 100px; height: 100px;
+      border-radius: 50%;
+      background: rgba(255,255,255,0.15);
+      border: 2px solid rgba(255,255,255,0.3);
+      display: none; transform: translate(-50%,-50%);
+      pointer-events: none;
+    }
+    #joy-knob {
+      position: absolute; width: 44px; height: 44px;
+      border-radius: 50%;
+      background: rgba(255,255,255,0.4);
+      display: none; transform: translate(-50%,-50%);
+      pointer-events: none;
+    }
+    #look-zone {
+      position: absolute; right: 0; bottom: 80px;
+      width: 52%; height: calc(55% - 80px);
+      pointer-events: all;
+    }
+    .touch-btn {
+      position: absolute; border-radius: 10px;
+      background: rgba(255,255,255,0.18);
+      border: 2px solid rgba(255,255,255,0.3);
+      color: #fff; font-size: 13px;
+      display: flex; align-items: center; justify-content: center;
+      pointer-events: all;
+    }
+    #btn-jump  { right: 16px; bottom: 110px; width: 60px; height: 60px; border-radius: 50%; font-size: 22px; }
+    #btn-break { right: 90px;  bottom: 20px; width: 70px; height: 50px; }
+    #btn-place { right: 16px;  bottom: 20px; width: 70px; height: 50px; }
+    #btn-inv   { right: 16px;  top: 16px;    width: 50px; height: 36px; font-size: 10px; }
+
+    /* Portrait warning */
+    #portrait-msg {
+      display: none;
+      position: fixed; inset: 0;
+      background: #000; color: #fff;
+      flex-direction: column;
+      align-items: center; justify-content: center;
+      font-family: sans-serif; font-size: 18px; text-align: center;
+      z-index: 999;
+    }
+    #portrait-msg span { font-size: 52px; margin-bottom: 16px; display: block; }
+    @media (orientation: portrait) and (pointer: coarse) {
+      #portrait-msg { display: flex; }
     }
   </style>
-  <script type="module" src="./src/main.js"></script>
 </head>
 <body>
-  <div id="rotate-msg">
-    <span>&#x21BB;</span>
-    Please rotate your device to landscape to play FORGE
+  <!-- Three.js renders directly to this canvas -->
+  <canvas id="game-canvas"></canvas>
+
+  <!-- HUD overlay -->
+  <div id="hud">
+    <div class="crosshair"></div>
+
+    <div id="status-row">
+      <span class="bar-icon">❤</span>
+      <div class="bar-bg"><div id="health-bar" style="width:100%"></div></div>
+      <span class="bar-icon" style="margin-left:10px">🍗</span>
+      <div class="bar-bg"><div id="hunger-bar" style="width:100%"></div></div>
+    </div>
+
+    <div id="hotbar">
+      <div class="hotbar-slot selected" id="slot-0"></div>
+      <div class="hotbar-slot" id="slot-1"></div>
+      <div class="hotbar-slot" id="slot-2"></div>
+      <div class="hotbar-slot" id="slot-3"></div>
+      <div class="hotbar-slot" id="slot-4"></div>
+      <div class="hotbar-slot" id="slot-5"></div>
+      <div class="hotbar-slot" id="slot-6"></div>
+      <div class="hotbar-slot" id="slot-7"></div>
+      <div class="hotbar-slot" id="slot-8"></div>
+    </div>
+
+    <div id="block-label"></div>
+    <div id="debug"></div>
   </div>
-  <div id="game-container"></div>
-  <script>
-    (function () {
-      function showErr(msg) {
-        var el = document.getElementById('forge-err');
-        if (!el) { el = document.createElement('div'); el.id = 'forge-err'; document.body.appendChild(el); }
-        el.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:#111;color:#ff5555;font:13px/1.5 monospace;padding:16px;overflow:auto;z-index:99999;white-space:pre-wrap;word-break:break-all';
-        el.textContent = msg;
-      }
-      window.addEventListener('error', function (e) {
-        showErr('JS ERROR\n' + e.message + '\n' + (e.filename || '') + ':' + e.lineno + '\n\n' + (e.error && e.error.stack ? e.error.stack : ''));
-      });
-      window.addEventListener('unhandledrejection', function (e) {
-        var r = e.reason;
-        showErr('PROMISE REJECTION\n' + (r && r.message ? r.message : String(r)) + '\n\n' + (r && r.stack ? r.stack : ''));
-      });
-    })();
-  </script>
+
+  <!-- Pointer lock overlay (desktop) -->
+  <div id="click-to-play">
+    <h1>FORGE</h1>
+    <p>Click to Play</p>
+    <p style="font-size:13px;color:#666;margin-top:8px;">WASD · Space · Mouse · E=Inventory · F3=Debug · 1-9=Hotbar</p>
+  </div>
+
+  <!-- Inventory / crafting panel -->
+  <div id="inventory-panel" class="hidden">
+    <div id="inv-inner">
+      <h2>INVENTORY</h2>
+      <div class="inv-grid" id="inv-main-grid"></div>
+      <div class="inv-grid" id="inv-hotbar-grid"></div>
+      <div id="craft-section">
+        <h3>CRAFTING</h3>
+        <div id="crafting-list"></div>
+      </div>
+      <button id="inv-close-btn" onclick="document.getElementById('inventory-panel').classList.add('hidden')">Close [E]</button>
+    </div>
+  </div>
+
+  <!-- Touch controls -->
+  <div id="touch-ui">
+    <div id="joy-zone"></div>
+    <div id="joy-base"></div>
+    <div id="joy-knob"></div>
+    <div id="look-zone"></div>
+    <div class="touch-btn" id="btn-jump">⬆</div>
+    <div class="touch-btn" id="btn-break">Break</div>
+    <div class="touch-btn" id="btn-place">Place</div>
+    <div class="touch-btn" id="btn-inv">Inv</div>
+  </div>
+
+  <!-- Portrait lock warning -->
+  <div id="portrait-msg">
+    <span>↻</span>
+    <p>Rotate to landscape to play FORGE</p>
+  </div>
+
+  <script type="module" src="./src/main.js"></script>
 </body>
 </html>

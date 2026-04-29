@@ -1,6 +1,6 @@
 {
   "name": "forge",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "scripts": {
     "dev": "vite",
@@ -8,8 +8,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "phaser": "^3.70.0",
-    "howler": "^2.2.4"
+    "three": "^0.163.0"
   },
   "devDependencies": {
     "vite": "^5.4.0"

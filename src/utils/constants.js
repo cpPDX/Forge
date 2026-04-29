@@ -19,6 +19,14 @@ export const MAX_HUNGER = 20;
 export const DAY_MS = 12 * 60 * 1000;
 
 // Block IDs — never reorder
+// Non-block item IDs (>= 100, never placed as blocks)
+export const ITEMS = {
+  WOODEN_SWORD:  100,
+  STONE_SWORD:   101,
+  IRON_SWORD:    102,
+  DIAMOND_SWORD: 103,
+};
+
 export const B = {
   AIR:           0,
   GRASS:         1,

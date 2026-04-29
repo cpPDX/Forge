@@ -9,8 +9,10 @@ import { TimeSystem }    from '../systems/TimeSystem.js';
 import { SaveManager }   from '../systems/SaveManager.js';
 import { HUD }           from '../ui/HUD.js';
 import { buildTextureAtlas } from '../blocks/TextureAtlas.js';
-import { CHUNK_SIZE, RENDER_DIST, B } from '../utils/constants.js';
+import { MobSystem }        from '../systems/MobSystem.js';
+import { CHUNK_SIZE, RENDER_DIST, B, ITEMS } from '../utils/constants.js';
 import { BlockRegistry } from '../blocks/BlockRegistry.js';
+import { ItemRegistry }  from '../blocks/ItemRegistry.js';
 
 const SEED = 12345;
 const FOG_START = (RENDER_DIST - 1) * CHUNK_SIZE;
@@ -58,6 +60,9 @@ export class Game {
     this._player.inventory = this._inventory;
     this._controls = new Controls(canvas);
 
+    // Mobs
+    this._mobs = new MobSystem(this._scene, this._world, this._camera);
+
     // HUD
     this._hud = new HUD();
 
@@ -70,6 +75,7 @@ export class Game {
     this._modifiedChunks = new Set();
 
     // Starter inventory
+    this._inventory.addItem(ITEMS.WOODEN_SWORD, 1);
     this._inventory.addItem(B.OAK_PLANKS, 16);
     this._inventory.addItem(B.DIRT, 32);
     this._inventory.addItem(B.STONE, 16);
@@ -226,7 +232,9 @@ export class Game {
 
     // Player update (skip movement when inventory open)
     const playerInput = this._inventoryOpen ? { ...input, locked: false } : input;
-    this._player.update(dt, playerInput);
+    const prevHp = this._player.hp;
+    this._player.update(dt, playerInput, this._mobs);
+    if (this._player.hp < prevHp) this._hud.damageFlash();
 
     // Update selected block label
     const t = this._player.targeted;
@@ -246,6 +254,7 @@ export class Game {
     this._streamChunks();
     this._updateOutline();
     this._updateFlashlight();
+    this._mobs.update(dt, this._player, this._time.isDay === false);
 
     this._time.update(dt);
     this._time.applyToScene(this._scene, this._renderer, this._ambient, this._sun);
@@ -257,6 +266,7 @@ export class Game {
       this._chunkMesh._meshes.size,
       Math.round(this._fps),
       this._time.hourString,
+      this._mobs.count(),
     );
 
     // Auto-save every 30s
@@ -292,8 +302,11 @@ export class Game {
     if (!el) return;
     const avail = this._crafting.available(this._inventory);
     el.innerHTML = avail.map((r, i) => {
-      const name = BlockRegistry.name(r.result.id);
-      const ing  = r.ingredients.map(ig => `${ig.count}x ${BlockRegistry.name(ig.id)}`).join(', ');
+      const name = ItemRegistry.name(r.result.id) ?? BlockRegistry.name(r.result.id);
+      const ing  = r.ingredients.map(ig => {
+        const iname = ItemRegistry.name(ig.id) ?? BlockRegistry.name(ig.id);
+        return `${ig.count}× ${iname}`;
+      }).join(', ');
       return `<div class="craft-entry" onclick="window.__game.craft(${i})">
         <span class="craft-name">${name} ×${r.result.count}</span>
         <span class="craft-ing">${ing}</span>

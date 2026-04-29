@@ -191,6 +191,13 @@
     #btn-inv        { right: 16px;  top: 60px;    width: 50px; height: 36px; font-size: 10px; }
     #btn-flashlight { right: 16px;  top: 16px;    width: 50px; height: 36px; font-size: 16px; }
 
+    /* Damage flash */
+    #dmg-flash {
+      position: fixed; inset: 0;
+      background: rgba(180,0,0,0.45);
+      pointer-events: none; opacity: 0; z-index: 200;
+    }
+
     /* Portrait warning */
     #portrait-msg {
       display: none; position: fixed; inset: 0;
@@ -278,6 +285,9 @@
     <div class="touch-btn" id="btn-break">Break</div>
     <div class="touch-btn" id="btn-place">Place</div>
   </div>
+
+  <!-- Damage vignette flash -->
+  <div id="dmg-flash"></div>
 
   <!-- Portrait warning -->
   <div id="portrait-msg">

@@ -1,4 +1,4 @@
-import { B } from '../utils/constants.js';
+import { B, ITEMS } from '../utils/constants.js';
 
 // Shapeless recipes: { ingredients: [{id,count}], result: {id,count} }
 const RECIPES = [
@@ -21,7 +21,15 @@ const RECIPES = [
   { ingredients: [{ id: B.SNOW, count: 4 }], result: { id: B.SNOW_BLOCK, count: 1 } },
   // Furnace
   { ingredients: [{ id: B.COBBLESTONE, count: 8 }], result: { id: B.FURNACE, count: 1 } },
-  // Oak planks → Crafting table (duplicate removed above)
+  // ── Weapons ──────────────────────────────────────────────────────────────
+  // 2 Oak Planks → Wooden Sword
+  { ingredients: [{ id: B.OAK_PLANKS, count: 2 }], result: { id: ITEMS.WOODEN_SWORD, count: 1 } },
+  // 2 Cobblestone → Stone Sword
+  { ingredients: [{ id: B.COBBLESTONE, count: 2 }], result: { id: ITEMS.STONE_SWORD, count: 1 } },
+  // 2 Iron Ore → Iron Sword
+  { ingredients: [{ id: B.IRON_ORE, count: 2 }], result: { id: ITEMS.IRON_SWORD, count: 1 } },
+  // 2 Diamond Ore → Diamond Sword
+  { ingredients: [{ id: B.DIAMOND_ORE, count: 2 }], result: { id: ITEMS.DIAMOND_SWORD, count: 1 } },
 ];
 
 export class Crafting {

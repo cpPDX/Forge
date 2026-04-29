@@ -1,309 +1,234 @@
-import { TILES, BIOME, LAYER, CHUNK_SIZE, WORLD_WIDTH, WORLD_HEIGHT, TILE_SIZE } from '../utils/constants.js';
-import { TileRegistry } from '../utils/TileRegistry.js';
+import { B, CHUNK_SIZE, CHUNK_HEIGHT, SEA_LEVEL } from '../utils/constants.js';
+import { makeFBM2D, makeFBM3D } from '../utils/noise.js';
+import { BlockRegistry } from '../blocks/BlockRegistry.js';
 
-// Minimal seeded PRNG (mulberry32)
-function mulberry32(seed) {
-  return function () {
-    seed |= 0; seed = seed + 0x6D2B79F5 | 0;
-    let t = Math.imul(seed ^ seed >>> 15, 1 | seed);
-    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
-    return ((t ^ t >>> 14) >>> 0) / 4294967296;
-  };
-}
-
-// Simple Perlin-like noise via value noise + smoothstep
-function makeNoise(seed) {
-  const rng = mulberry32(seed);
-  const TABLE_SIZE = 512;
-  const table = new Float32Array(TABLE_SIZE);
-  for (let i = 0; i < TABLE_SIZE; i++) table[i] = rng() * 2 - 1;
-
-  function fade(t) { return t * t * t * (t * (t * 6 - 15) + 10); }
-  function lerp(a, b, t) { return a + (b - a) * t; }
-
-  return function noise1d(x) {
-    const xi = Math.floor(x) & (TABLE_SIZE / 2 - 1);
-    const xf = x - Math.floor(x);
-    return lerp(table[xi], table[xi + 1], fade(xf));
-  };
-}
-
-function makeFBM(seed, octaves = 4) {
-  const ns = [];
-  for (let i = 0; i < octaves; i++) ns.push(makeNoise(seed + i * 1337));
-  return function fbm(x) {
-    let val = 0, amp = 0.5, freq = 1;
-    for (let i = 0; i < octaves; i++) {
-      val += ns[i](x * freq) * amp;
-      amp *= 0.5; freq *= 2;
-    }
-    return val;
-  };
+function rngSeed(seed) {
+  let s = seed | 0;
+  return () => { s = (s * 1664525 + 1013904223) & 0xffffffff; return (s>>>0)/0xffffffff; };
 }
 
 export class World {
   constructor(seed) {
-    this.seed = seed;
-    this._chunks = new Map();
-    this._surfaceCache = new Map();
-    this._dirtyChunks = new Set();
+    this.seed   = seed;
+    this._chunks = new Map(); // "cx,cz" → Uint8Array
+    this._dirty  = new Set();
 
     const s = seed;
-    this._surfNoise   = makeFBM(s ^ 0x1234, 4);
-    this._biomeNoise  = makeNoise(s ^ 0xABCD);
-    this._caveNoise1  = makeFBM(s ^ 0x5678, 3);
-    this._caveNoise2  = makeFBM(s ^ 0x9ABC, 3);
-    this._oreNoise    = makeNoise(s ^ 0xDEF0);
-    this._detailNoise = makeFBM(s ^ 0x2468, 2);
-    this._featRng     = mulberry32(s ^ 0x1357);
+    this._hNoise    = makeFBM2D(s ^ 0x1234, 6);
+    this._biomeN    = makeFBM2D(s ^ 0xABCD, 3);
+    this._caveN     = makeFBM3D(s ^ 0x5678, 3);
+    this._caveN2    = makeFBM3D(s ^ 0x9012, 3);
+    this._oreN      = makeFBM2D(s ^ 0x3456, 2);
+    this._featRng   = rngSeed(s ^ 0x7890);
+    this._surfCache = new Map();
   }
 
-  getTile(tx, ty) {
-    if (tx < 0 || tx >= WORLD_WIDTH || ty < 0 || ty >= WORLD_HEIGHT) return TILES.AIR;
-    const key = this._chunkKey(tx, ty);
-    if (!this._chunks.has(key)) this._generateChunk(tx >> 5, ty >> 5);
-    const chunk = this._chunks.get(key);
-    return chunk[(ty & 31) << 5 | (tx & 31)];
+  // ─── Chunk key & storage ─────────────────────────────────────────────────
+
+  _key(cx, cz) { return `${cx},${cz}`; }
+
+  _idx(lx, ly, lz) { return (ly * CHUNK_SIZE + lz) * CHUNK_SIZE + lx; }
+
+  _ensure(cx, cz) {
+    const k = this._key(cx, cz);
+    if (!this._chunks.has(k)) this._generate(cx, cz, k);
+    return this._chunks.get(k);
   }
 
-  setTile(tx, ty, id) {
-    if (tx < 0 || tx >= WORLD_WIDTH || ty < 0 || ty >= WORLD_HEIGHT) return;
-    const key = this._chunkKey(tx, ty);
-    if (!this._chunks.has(key)) this._generateChunk(tx >> 5, ty >> 5);
-    const chunk = this._chunks.get(key);
-    chunk[(ty & 31) << 5 | (tx & 31)] = id;
-    this._dirtyChunks.add(key);
+  // ─── Public API ──────────────────────────────────────────────────────────
+
+  getBlock(x, y, z) {
+    if (y < 0 || y >= CHUNK_HEIGHT) return y < 0 ? B.BEDROCK : B.AIR;
+    const cx = Math.floor(x / CHUNK_SIZE);
+    const cz = Math.floor(z / CHUNK_SIZE);
+    const lx = ((x % CHUNK_SIZE) + CHUNK_SIZE) % CHUNK_SIZE;
+    const lz = ((z % CHUNK_SIZE) + CHUNK_SIZE) % CHUNK_SIZE;
+    return this._ensure(cx, cz)[this._idx(lx, y, lz)];
   }
 
-  isSolid(tx, ty) {
-    return TileRegistry.isSolid(this.getTile(tx, ty));
+  setBlock(x, y, z, id) {
+    if (y < 0 || y >= CHUNK_HEIGHT) return;
+    const cx = Math.floor(x / CHUNK_SIZE);
+    const cz = Math.floor(z / CHUNK_SIZE);
+    const lx = ((x % CHUNK_SIZE) + CHUNK_SIZE) % CHUNK_SIZE;
+    const lz = ((z % CHUNK_SIZE) + CHUNK_SIZE) % CHUNK_SIZE;
+    this._ensure(cx, cz)[this._idx(lx, y, lz)] = id;
+    this._dirty.add(this._key(cx, cz));
+    // Neighboring chunks need remesh if block is on border
+    if (lx === 0)              this._dirty.add(this._key(cx-1, cz));
+    if (lx === CHUNK_SIZE - 1) this._dirty.add(this._key(cx+1, cz));
+    if (lz === 0)              this._dirty.add(this._key(cx, cz-1));
+    if (lz === CHUNK_SIZE - 1) this._dirty.add(this._key(cx, cz+1));
   }
 
-  getSurfaceHeight(tx) {
-    if (this._surfaceCache.has(tx)) return this._surfaceCache.get(tx);
-    const biome = this.getBiome(tx);
-    let baseY = 90;
-    if (biome === BIOME.DESERT) baseY = 88;
-    if (biome === BIOME.SNOW)   baseY = 92;
-    if (biome === BIOME.JUNGLE) baseY = 85;
-    const h = Math.round(baseY + this._surfNoise(tx / 80) * 20 + this._detailNoise(tx / 20) * 8);
-    const clamped = Math.max(LAYER.SURFACE_TOP, Math.min(LAYER.SURFACE_BOTTOM - 1, h));
-    this._surfaceCache.set(tx, clamped);
-    return clamped;
-  }
+  isSolid(x, y, z) { return BlockRegistry.isSolid(this.getBlock(x, y, z)); }
 
-  getBiome(tx) {
-    const v = this._biomeNoise(tx / 400);
-    if (v < -0.4)  return BIOME.SNOW;
-    if (v < -0.05) return BIOME.FOREST;
-    if (v < 0.35)  return BIOME.DESERT;
-    return BIOME.JUNGLE;
-  }
+  chunkLoaded(cx, cz) { return this._chunks.has(this._key(cx, cz)); }
 
-  getSpawnPoint() {
-    const cx = Math.floor(WORLD_WIDTH / 2);
-    const sy = this.getSurfaceHeight(cx);
-    return { x: cx * TILE_SIZE + TILE_SIZE / 2, y: (sy - 2) * TILE_SIZE };
-  }
+  getChunkData(cx, cz) { return this._ensure(cx, cz); }
 
-  // AABB physics — returns { x, y, vx, vy, onGround, onCeiling, onWall }
-  moveAndCollide(px, py, pw, ph, mvx, mvy, dt) {
-    let x = px, y = py;
-    const vx = mvx, vy = mvy;
-    let onGround = false, onCeiling = false, onWall = false;
+  isDirty(cx, cz) { return this._dirty.has(this._key(cx, cz)); }
+  clearDirty(cx, cz) { this._dirty.delete(this._key(cx, cz)); }
+  markDirty(cx, cz) { this._dirty.add(this._key(cx, cz)); }
 
-    // Move X
-    x += vx * dt;
-    if (this._rectOverlap(x, y, pw, ph)) {
-      onWall = true;
-      if (vx > 0) x = Math.floor((x + pw) / TILE_SIZE) * TILE_SIZE - pw - 0.01;
-      else        x = Math.ceil(x / TILE_SIZE) * TILE_SIZE + 0.01;
+  // ─── Surface height ───────────────────────────────────────────────────────
+
+  surfaceAt(x, z) {
+    const k = `${x},${z}`;
+    if (this._surfCache.has(k)) return this._surfCache.get(k);
+    const biome = this._biomeAt(x, z);
+    let h;
+    if (biome === 'desert') {
+      h = Math.round(SEA_LEVEL - 2 + this._hNoise(x/120, z/120) * 12 + this._hNoise(x/30, z/30)*4);
+    } else if (biome === 'snow') {
+      h = Math.round(SEA_LEVEL + 4 + this._hNoise(x/100, z/100) * 22 + this._hNoise(x/25, z/25)*6);
+    } else if (biome === 'mountains') {
+      h = Math.round(SEA_LEVEL + this._hNoise(x/80, z/80) * 40 + this._hNoise(x/20, z/20)*10);
+    } else {
+      h = Math.round(SEA_LEVEL + this._hNoise(x/100, z/100) * 18 + this._hNoise(x/28, z/28)*5);
     }
-
-    // Move Y
-    y += vy * dt;
-    if (this._rectOverlap(x, y, pw, ph)) {
-      if (vy > 0) {
-        y = Math.floor((y + ph) / TILE_SIZE) * TILE_SIZE - ph - 0.01;
-        onGround = true;
-      } else {
-        y = Math.ceil(y / TILE_SIZE) * TILE_SIZE + 0.01;
-        onCeiling = true;
-      }
-    }
-
-    return { x, y, vx: onWall ? 0 : vx, vy: (onGround || onCeiling) ? 0 : vy, onGround, onCeiling, onWall };
+    h = Math.max(4, Math.min(CHUNK_HEIGHT - 8, h));
+    this._surfCache.set(k, h);
+    return h;
   }
 
-  _rectOverlap(x, y, w, h) {
-    const x1 = Math.floor(x / TILE_SIZE);
-    const y1 = Math.floor(y / TILE_SIZE);
-    const x2 = Math.floor((x + w - 0.01) / TILE_SIZE);
-    const y2 = Math.floor((y + h - 0.01) / TILE_SIZE);
-    for (let ty = y1; ty <= y2; ty++) {
-      for (let tx = x1; tx <= x2; tx++) {
-        if (this.isSolid(tx, ty)) return true;
-      }
-    }
-    return false;
+  _biomeAt(x, z) {
+    const v = this._biomeN(x/400, z/400);
+    if (v < -0.35) return 'snow';
+    if (v < 0.0)   return 'forest';
+    if (v < 0.35)  return 'desert';
+    return 'mountains';
   }
 
-  _chunkKey(tx, ty) {
-    return `${tx >> 5},${ty >> 5}`;
+  spawnPoint() {
+    const sy = this.surfaceAt(0, 0);
+    return { x: 0.5, y: sy + 2, z: 0.5 };
   }
 
-  _generateChunk(cx, cy) {
-    const key = `${cx},${cy}`;
-    if (this._chunks.has(key)) return;
-    const data = new Uint16Array(CHUNK_SIZE * CHUNK_SIZE);
-    const baseX = cx * CHUNK_SIZE;
-    const baseY = cy * CHUNK_SIZE;
+  // ─── Chunk generation ─────────────────────────────────────────────────────
+
+  _generate(cx, cz, key) {
+    const data = new Uint8Array(CHUNK_SIZE * CHUNK_SIZE * CHUNK_HEIGHT);
+    const bx0  = cx * CHUNK_SIZE;
+    const bz0  = cz * CHUNK_SIZE;
 
     for (let lx = 0; lx < CHUNK_SIZE; lx++) {
-      const tx = baseX + lx;
-      const surfY = this.getSurfaceHeight(tx);
-      const biome = this.getBiome(tx);
+      for (let lz = 0; lz < CHUNK_SIZE; lz++) {
+        const wx = bx0 + lx, wz = bz0 + lz;
+        const surf  = this.surfaceAt(wx, wz);
+        const biome = this._biomeAt(wx, wz);
 
-      for (let ly = 0; ly < CHUNK_SIZE; ly++) {
-        const ty = baseY + ly;
-        data[ly << 5 | lx] = this._generateTile(tx, ty, surfY, biome);
+        for (let y = 0; y < CHUNK_HEIGHT; y++) {
+          const idx = this._idx(lx, y, lz);
+          data[idx] = this._genBlock(wx, y, wz, surf, biome);
+        }
       }
     }
 
-    // Place surface features
-    this._placeSurfaceFeatures(data, baseX, baseY);
+    // Surface features (trees etc.) — second pass
+    const rng = rngSeed(cx * 73856093 ^ cz * 19349663 ^ this.seed);
+    for (let lx = 0; lx < CHUNK_SIZE; lx++) {
+      for (let lz = 0; lz < CHUNK_SIZE; lz++) {
+        const wx = bx0 + lx, wz = bz0 + lz;
+        const surf  = this.surfaceAt(wx, wz);
+        const biome = this._biomeAt(wx, wz);
+        const top   = data[this._idx(lx, surf, lz)];
+        if (top === B.GRASS && rng() < 0.03) {
+          this._placeTree(data, lx, surf + 1, lz, bx0, bz0, biome, rng);
+        }
+        if (top === B.GRASS && rng() < 0.008) {
+          // Crafting table on surface for starter
+          if (surf + 1 < CHUNK_HEIGHT) data[this._idx(lx, surf+1, lz)] = B.CRAFTING_TABLE;
+        }
+      }
+    }
 
     this._chunks.set(key, data);
   }
 
-  _generateTile(tx, ty, surfY, biome) {
-    const depth = ty - surfY;
-
-    // Bedrock
-    if (ty >= WORLD_HEIGHT - 3) return TILES.BEDROCK;
-
-    // Sky
-    if (ty < surfY) {
-      // Water pockets near surface in jungle
-      if (biome === BIOME.JUNGLE && depth > -3 && depth < 0 && this._oreNoise(tx / 5 + ty / 3) > 0.7) return TILES.WATER;
-      return TILES.AIR;
-    }
-
-    // Underworld
-    if (ty >= LAYER.CAVERN_BOTTOM) {
-      const v = this._caveNoise1(tx / 30) * this._caveNoise2(ty / 20);
-      if (v > 0.05 && ty < WORLD_HEIGHT - 3) {
-        if (this._oreNoise(tx * 0.1 + ty * 0.07) > 0.6) return TILES.GLOWSTONE;
-        if (this._oreNoise(tx * 0.07 + ty * 0.11) > 0.5) return TILES.LAVA;
-        return TILES.AIR;
-      }
-      if (this._oreNoise(tx * 0.05 + ty * 0.08) > 0.85) return TILES.HELLSTONE;
-      return TILES.NETHERRACK;
-    }
+  _genBlock(x, y, z, surf, biome) {
+    if (y === 0) return B.BEDROCK;
+    if (y < 0)   return B.BEDROCK;
 
     // Cave carving
-    const c1 = this._caveNoise1(tx / 40 + ty / 60);
-    const c2 = this._caveNoise2(tx / 55 + ty / 35);
-    if (depth > 5 && c1 * c2 > 0.12) return TILES.AIR;
-
-    // Surface tile
-    if (depth === 0) {
-      if (biome === BIOME.DESERT) return TILES.SAND;
-      if (biome === BIOME.SNOW)   return TILES.GRASS_SNOW;
-      return TILES.GRASS;
+    if (y > 0 && y < surf - 1) {
+      const c1 = this._caveN(x/20, y/12, z/20);
+      const c2 = this._caveN2(x/18, y/14, z/18);
+      if (c1 * c2 > 0.11) return B.AIR;
     }
 
-    // Near-surface
-    if (depth < 5) {
-      if (biome === BIOME.DESERT)  return TILES.SAND;
-      if (biome === BIOME.SNOW)    return TILES.SNOW_DIRT;
-      return TILES.DIRT;
+    // Above surface
+    if (y > surf) return B.AIR;
+
+    // Surface layer
+    if (y === surf) {
+      if (biome === 'desert') return B.SAND;
+      if (biome === 'snow')   return B.SNOW;
+      return B.GRASS;
     }
 
-    // Sandstone under desert sand
-    if (biome === BIOME.DESERT && depth < 15) return TILES.SANDSTONE;
+    const depth = surf - y;
+
+    if (biome === 'desert' && depth < 6) return B.SAND;
+    if (biome === 'snow'   && depth < 4) return B.DIRT;
+    if (depth < 4) return B.DIRT;
+
+    // Sandstone under desert
+    if (biome === 'desert' && depth < 14) return B.SANDSTONE;
 
     // Ores
-    const ov = this._oreNoise(tx * 0.13 + ty * 0.17);
-    if (ty >= 50  && ty < 200 && ov > 0.82) return TILES.COAL_ORE;
-    if (ty >= 80  && ty < 280 && ov > 0.87) return TILES.IRON_ORE;
-    if (ty >= 150 && ty < 350 && ov > 0.91) return TILES.GOLD_ORE;
-    if (ty >= 250 && ty < 450 && ov > 0.94) return TILES.DIAMOND_ORE;
+    const ov = this._oreN(x * 0.17 + y * 0.13, z * 0.17 + y * 0.11);
+    if (y >= 4   && y < 64  && ov > 0.78) return B.COAL_ORE;
+    if (y >= 4   && y < 48  && ov > 0.85) return B.IRON_ORE;
+    if (y >= 4   && y < 32  && ov > 0.90) return B.GOLD_ORE;
+    if (y >= 4   && y < 16  && ov > 0.93) return B.DIAMOND_ORE;
 
-    // Clay pockets near surface
-    if (depth > 4 && depth < 20 && this._oreNoise(tx * 0.2 + ty * 0.3) > 0.9) return TILES.CLAY;
+    // Clay pockets near water level
+    if (y >= SEA_LEVEL - 4 && y <= SEA_LEVEL && ov > 0.88) return B.CLAY;
 
-    // Ice underground in snow biome
-    if (biome === BIOME.SNOW && depth < 20 && this._oreNoise(tx * 0.15 + ty * 0.2) > 0.88) return TILES.ICE;
+    if (y >= 1 && y <= 4) return B.BEDROCK;
 
-    return TILES.STONE;
+    return B.STONE;
   }
 
-  _placeSurfaceFeatures(data, baseX, baseY) {
-    const rng = this._featRng;
-    for (let lx = 0; lx < CHUNK_SIZE; lx++) {
-      const tx = baseX + lx;
-      const surfY = this.getSurfaceHeight(tx);
-      const biome = this.getBiome(tx);
-      const ly = surfY - baseY;
-
-      // Only place features that fit in this chunk
-      if (ly < 0 || ly >= CHUNK_SIZE) continue;
-
-      // Surface decoration on top of surface tile (ly - 1)
-      const decorLy = ly - 1;
-      if (decorLy < 0 || decorLy >= CHUNK_SIZE) continue;
-
-      const r = rng();
-      if (biome === BIOME.FOREST || biome === BIOME.JUNGLE) {
-        if (r < 0.06) {
-          // Tree
-          this._placeTree(data, baseX, baseY, lx, ly, biome);
-        } else if (r < 0.10) {
-          data[decorLy << 5 | lx] = TILES.FLOWER_RED;
-        } else if (r < 0.14) {
-          data[decorLy << 5 | lx] = TILES.FLOWER_YELLOW;
-        } else if (r < 0.22) {
-          data[decorLy << 5 | lx] = TILES.TALL_GRASS;
-        }
-      } else if (biome === BIOME.DESERT) {
-        if (r < 0.04) {
-          // Cactus (2-3 tall)
-          const h = Math.floor(rng() * 2) + 2;
-          for (let i = 0; i < h; i++) {
-            const cly = decorLy - i;
-            if (cly >= 0 && cly < CHUNK_SIZE) data[cly << 5 | lx] = TILES.CACTUS;
-          }
-        }
-      } else if (biome === BIOME.SNOW) {
-        if (r < 0.05) {
-          this._placeTree(data, baseX, baseY, lx, ly, biome);
-        }
+  _placeTree(data, lx, baseY, lz, bx0, bz0, biome, rng) {
+    const h = Math.floor(rng() * 3) + 4;
+    // Trunk
+    for (let dy = 0; dy < h; dy++) {
+      const y = baseY + dy;
+      if (y >= CHUNK_HEIGHT) break;
+      if (lx >= 0 && lx < CHUNK_SIZE && lz >= 0 && lz < CHUNK_SIZE) {
+        data[this._idx(lx, y, lz)] = B.OAK_LOG;
       }
     }
-  }
-
-  _placeTree(data, baseX, baseY, lx, ly, biome) {
-    const rng = this._featRng;
-    const height = Math.floor(rng() * 3) + 4;
-    const log = biome === BIOME.JUNGLE ? TILES.JUNGLE_LOG : biome === BIOME.SNOW ? TILES.PINE_LOG : TILES.OAK_LOG;
-    const leaves = biome === BIOME.JUNGLE ? TILES.JUNGLE_LEAVES : biome === BIOME.SNOW ? TILES.PINE_LEAVES : TILES.OAK_LEAVES;
-
-    for (let i = 1; i <= height; i++) {
-      const tly = ly - i;
-      if (tly >= 0 && tly < CHUNK_SIZE) data[tly << 5 | lx] = log;
-    }
-
     // Leaf crown
-    const crownY = ly - height;
+    const ty = baseY + h;
     for (let dy = -2; dy <= 1; dy++) {
-      for (let dx = -2; dx <= 2; dx++) {
-        if (Math.abs(dx) === 2 && dy === 1) continue;
-        const clx = lx + dx, cly = crownY + dy;
-        if (clx < 0 || clx >= CHUNK_SIZE || cly < 0 || cly >= CHUNK_SIZE) continue;
-        const idx = cly << 5 | clx;
-        if (data[idx] === TILES.AIR) data[idx] = leaves;
+      const r = dy >= 0 ? 1 : 2;
+      for (let dx = -r; dx <= r; dx++) {
+        for (let dz = -r; dz <= r; dz++) {
+          if (Math.abs(dx) === r && Math.abs(dz) === r) continue;
+          const nx = lx + dx, ny = ty + dy, nz = lz + dz;
+          if (nx < 0 || nx >= CHUNK_SIZE || nz < 0 || nz >= CHUNK_SIZE) continue;
+          if (ny < 0 || ny >= CHUNK_HEIGHT) continue;
+          const idx = this._idx(nx, ny, nz);
+          if (data[idx] === B.AIR) data[idx] = B.OAK_LEAVES;
+        }
       }
     }
+  }
+
+  // Load chunk data (from save)
+  loadChunkData(cx, cz, data) {
+    this._chunks.set(this._key(cx, cz), new Uint8Array(data));
+  }
+
+  // Serialize modified chunks
+  serializeChunks(modifiedKeys) {
+    const out = {};
+    for (const k of modifiedKeys) {
+      if (this._chunks.has(k)) out[k] = Array.from(this._chunks.get(k));
+    }
+    return out;
   }
 }

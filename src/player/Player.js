@@ -1,0 +1,279 @@
+import * as THREE from 'three';
+import {
+  GRAVITY, JUMP_VEL, WALK_SPEED, SPRINT_SPEED,
+  PLAYER_WIDTH, PLAYER_HEIGHT, EYE_HEIGHT, REACH,
+  B,
+} from '../utils/constants.js';
+import { BlockRegistry } from '../blocks/BlockRegistry.js';
+
+const HALF_W = PLAYER_WIDTH / 2;
+
+// DDA voxel raycast — returns { pos:[x,y,z], face:[nx,ny,nz] } or null
+function raycast(world, ox, oy, oz, dx, dy, dz, maxDist) {
+  let x = Math.floor(ox), y = Math.floor(oy), z = Math.floor(oz);
+  const sx = dx > 0 ? 1 : -1, sy = dy > 0 ? 1 : -1, sz = dz > 0 ? 1 : -1;
+  const tdx = Math.abs(1 / dx), tdy = Math.abs(1 / dy), tdz = Math.abs(1 / dz);
+  let tmx = (dx > 0 ? (x + 1 - ox) : (ox - x)) * tdx;
+  let tmy = (dy > 0 ? (y + 1 - oy) : (oy - y)) * tdy;
+  let tmz = (dz > 0 ? (z + 1 - oz) : (oz - z)) * tdz;
+  let face = [0, 0, 0];
+  let dist = 0;
+
+  for (let i = 0; i < 100; i++) {
+    const id = world.getBlock(x, y, z);
+    if (id !== B.AIR && BlockRegistry.isSolid(id)) {
+      return { pos: [x, y, z], face };
+    }
+    if (dist > maxDist) return null;
+    if (tmx < tmy && tmx < tmz) {
+      dist = tmx; x += sx; face = [-sx, 0, 0]; tmx += tdx;
+    } else if (tmy < tmz) {
+      dist = tmy; y += sy; face = [0, -sy, 0]; tmy += tdy;
+    } else {
+      dist = tmz; z += sz; face = [0, 0, -sz]; tmz += tdz;
+    }
+  }
+  return null;
+}
+
+export class Player {
+  constructor(world, camera) {
+    this._world  = world;
+    this.camera  = camera;
+
+    // Position = feet center
+    const sp = world.spawnPoint();
+    this.x = sp.x; this.y = sp.y; this.z = sp.z;
+    this.vx = 0; this.vy = 0; this.vz = 0;
+
+    this.onGround = false;
+    this.sneaking = false;
+
+    // Look angles (driven by Controls)
+    this.yaw   = 0;
+    this.pitch = 0;
+
+    // Block targeting
+    this.targeted = null; // { pos, face }
+    this.breakProgress = 0; // 0..1
+    this._breakTarget = null;
+
+    // Stats
+    this.hp     = 20;
+    this.hunger = 20;
+    this._hungerTimer = 0;
+    this._fallDmgVy  = 0;
+
+    // Inventory reference (set by Game)
+    this.inventory = null;
+
+    this._dir = new THREE.Vector3();
+  }
+
+  // ─── Update ──────────────────────────────────────────────────────────────
+
+  update(dt, input) {
+    this.yaw   = input.yaw;
+    this.pitch = input.pitch;
+
+    this._move(dt, input);
+    this._applyGravity(dt);
+    this._collide(dt);
+    this._updateCamera();
+    this._updateTarget();
+    this._handleBreak(dt, input);
+    this._handlePlace(input);
+    this._handleHunger(dt);
+  }
+
+  // ─── Movement ────────────────────────────────────────────────────────────
+
+  _move(dt, input) {
+    if (!input.locked) return;
+
+    const speed = input.sprint ? SPRINT_SPEED : (this.sneaking ? 1.3 : WALK_SPEED);
+    this.sneaking = input.sneak;
+
+    const cy = Math.cos(this.yaw), sy = Math.sin(this.yaw);
+    let mx = 0, mz = 0;
+    if (input.forward) { mx -= sy; mz -= cy; }
+    if (input.back)    { mx += sy; mz += cy; }
+    if (input.left)    { mx -= cy; mz += sy; }
+    if (input.right)   { mx += cy; mz -= sy; }
+
+    const len = Math.sqrt(mx*mx + mz*mz);
+    if (len > 0) { mx /= len; mz /= len; }
+
+    this.vx = mx * speed;
+    this.vz = mz * speed;
+
+    if (input.jump && this.onGround) {
+      this.vy = JUMP_VEL;
+      this.onGround = false;
+    }
+  }
+
+  // ─── Physics ─────────────────────────────────────────────────────────────
+
+  _applyGravity(dt) {
+    if (!this.onGround) {
+      this._fallDmgVy = Math.min(this.vy, this._fallDmgVy);
+      this.vy += GRAVITY * dt;
+    }
+  }
+
+  _collide(dt) {
+    let nx = this.x + this.vx * dt;
+    let ny = this.y + this.vy * dt;
+    let nz = this.z + this.vz * dt;
+    const w = HALF_W, h = PLAYER_HEIGHT;
+
+    // X
+    if (this._blockCheck(nx, this.y, this.z, w, h)) {
+      nx = this.x; this.vx = 0;
+    }
+    // Z
+    if (this._blockCheck(nx, this.y, nz, w, h)) {
+      nz = this.z; this.vz = 0;
+    }
+    // Y
+    const prevOnGround = this.onGround;
+    this.onGround = false;
+    if (this._blockCheck(nx, ny, nz, w, h)) {
+      if (this.vy < 0) {
+        // Landing
+        const fallSpeed = -this._fallDmgVy;
+        if (fallSpeed > 8) this._takeDamage(Math.floor(fallSpeed - 8));
+        this.onGround = true;
+      }
+      ny = this.y;
+      this.vy = 0;
+      this._fallDmgVy = 0;
+    }
+
+    this.x = nx; this.y = ny; this.z = nz;
+  }
+
+  _blockCheck(x, y, z, w, h) {
+    const x0 = Math.floor(x - w), x1 = Math.floor(x + w);
+    const y0 = Math.floor(y),     y1 = Math.floor(y + h - 0.001);
+    const z0 = Math.floor(z - w), z1 = Math.floor(z + w);
+    for (let bx = x0; bx <= x1; bx++)
+      for (let by = y0; by <= y1; by++)
+        for (let bz = z0; bz <= z1; bz++)
+          if (this._world.isSolid(bx, by, bz)) return true;
+    return false;
+  }
+
+  // ─── Camera ──────────────────────────────────────────────────────────────
+
+  _updateCamera() {
+    this.camera.position.set(this.x, this.y + EYE_HEIGHT, this.z);
+    this.camera.rotation.order = 'YXZ';
+    this.camera.rotation.y = this.yaw;
+    this.camera.rotation.x = this.pitch;
+  }
+
+  // ─── Block targeting ─────────────────────────────────────────────────────
+
+  _updateTarget() {
+    const { x, y, z, pitch, yaw } = this;
+    const ey = y + EYE_HEIGHT;
+    const dx = -Math.sin(yaw) * Math.cos(pitch);
+    const dy =  Math.sin(pitch);
+    const dz = -Math.cos(yaw) * Math.cos(pitch);
+    this.targeted = raycast(this._world, x, ey, z, dx, dy, dz, REACH);
+  }
+
+  // ─── Block interaction ───────────────────────────────────────────────────
+
+  _handleBreak(dt, input) {
+    if (!input.locked) return;
+
+    // One-shot break (mobile button tap or mouse click)
+    if (input.breakOnce && this.targeted) {
+      const [bx, by, bz] = this.targeted.pos;
+      this._world.setBlock(bx, by, bz, B.AIR);
+      this.breakProgress = 0;
+      this._breakTarget = null;
+      return;
+    }
+
+    // Hold-to-break
+    if (input.break && this.targeted) {
+      const t = this.targeted.pos;
+      const same = this._breakTarget && this._breakTarget[0] === t[0]
+                && this._breakTarget[1] === t[1] && this._breakTarget[2] === t[2];
+      if (!same) { this.breakProgress = 0; this._breakTarget = t.slice(); }
+
+      const id   = this._world.getBlock(t[0], t[1], t[2]);
+      const hard = BlockRegistry.hardness(id);
+      if (hard < 0) return; // unbreakable
+
+      this.breakProgress += dt / (hard + 0.3);
+      if (this.breakProgress >= 1) {
+        this._world.setBlock(t[0], t[1], t[2], B.AIR);
+        this.breakProgress = 0;
+        this._breakTarget = null;
+      }
+    } else {
+      this.breakProgress = 0;
+      this._breakTarget = null;
+    }
+  }
+
+  _handlePlace(input) {
+    if (!input.locked || !input.placeOnce || !this.targeted) return;
+    if (!this.inventory) return;
+
+    const slot = this.inventory.hotbarSlot(this.inventory.selectedSlot);
+    if (!slot || slot.id === B.AIR || slot.count <= 0) return;
+
+    const [bx, by, bz] = this.targeted.pos;
+    const [fx, fy, fz] = this.targeted.face;
+    const px = bx + fx, py = by + fy, pz = bz + fz;
+
+    // Don't place inside player AABB
+    if (this._overlapsPlayer(px, py, pz)) return;
+
+    this._world.setBlock(px, py, pz, slot.id);
+    this.inventory.consumeSelected();
+  }
+
+  _overlapsPlayer(bx, by, bz) {
+    const w = HALF_W + 0.01, h = PLAYER_HEIGHT;
+    return bx < this.x + w && bx + 1 > this.x - w &&
+           by < this.y + h && by + 1 > this.y &&
+           bz < this.z + w && bz + 1 > this.z - w;
+  }
+
+  // ─── Stats ───────────────────────────────────────────────────────────────
+
+  _handleHunger(dt) {
+    this._hungerTimer += dt;
+    if (this._hungerTimer >= 60) {
+      this._hungerTimer = 0;
+      if (this.hunger > 0) this.hunger--;
+    }
+    if (this.hunger >= 18 && this.hp < 20) {
+      this.hp = Math.min(20, this.hp + dt * 0.5);
+    }
+  }
+
+  _takeDamage(amount) {
+    this.hp = Math.max(0, this.hp - amount);
+  }
+
+  // ─── Serialize ───────────────────────────────────────────────────────────
+
+  serialize() {
+    return { x: this.x, y: this.y, z: this.z, yaw: this.yaw, pitch: this.pitch, hp: this.hp, hunger: this.hunger };
+  }
+
+  load(data) {
+    if (!data) return;
+    this.x = data.x ?? this.x; this.y = data.y ?? this.y; this.z = data.z ?? this.z;
+    this.yaw = data.yaw ?? 0; this.pitch = data.pitch ?? 0;
+    this.hp = data.hp ?? 20; this.hunger = data.hunger ?? 20;
+  }
+}

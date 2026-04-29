@@ -39,8 +39,8 @@ function sampleSky(dayFrac) {
 
 export class TimeSystem {
   constructor() {
-    this._elapsed = 0;
-    this.dayFrac  = 0.3;
+    this._elapsed = DAY_MS * 0.35; // start mid-morning
+    this.dayFrac  = 0.35;
   }
 
   update(dt) {

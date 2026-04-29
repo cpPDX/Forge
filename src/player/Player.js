@@ -5,6 +5,7 @@ import {
   B,
 } from '../utils/constants.js';
 import { BlockRegistry } from '../blocks/BlockRegistry.js';
+import { ItemRegistry }  from '../blocks/ItemRegistry.js';
 
 const HALF_W = PLAYER_WIDTH / 2;
 
@@ -72,7 +73,7 @@ export class Player {
 
   // ─── Update ──────────────────────────────────────────────────────────────
 
-  update(dt, input) {
+  update(dt, input, mobSystem = null) {
     this.yaw   = input.yaw;
     this.pitch = input.pitch;
 
@@ -81,7 +82,7 @@ export class Player {
     this._collide(dt);
     this._updateCamera();
     this._updateTarget();
-    this._handleBreak(dt, input);
+    this._handleBreak(dt, input, mobSystem);
     this._handlePlace(input);
     this._handleHunger(dt);
   }
@@ -187,15 +188,37 @@ export class Player {
 
   // ─── Block interaction ───────────────────────────────────────────────────
 
-  _handleBreak(dt, input) {
+  // Returns true if a mob was hit (prevents simultaneous block-break)
+  _attack(mobSystem) {
+    if (!mobSystem) return false;
+    let damage = 1, reach = 2.5; // bare fists
+    if (this.inventory) {
+      const slot = this.inventory.hotbarSlot(this.inventory.selectedSlot);
+      if (slot && slot.id !== B.AIR) {
+        const item = ItemRegistry.get(slot.id);
+        if (item) { damage = item.damage; reach = item.reach; }
+      }
+    }
+    const target = mobSystem.findTarget(this.x, this.y, this.z, this.yaw, this.pitch, reach);
+    if (target) {
+      mobSystem.hit(target.id, damage, this.x, this.z);
+      return true;
+    }
+    return false;
+  }
+
+  _handleBreak(dt, input, mobSystem) {
     if (!input.locked) return;
 
-    // One-shot break (mobile button tap or mouse click)
-    if (input.breakOnce && this.targeted) {
-      const [bx, by, bz] = this.targeted.pos;
-      this._world.setBlock(bx, by, bz, B.AIR);
-      this.breakProgress = 0;
-      this._breakTarget = null;
+    // One-shot: try mob hit first, then block break
+    if (input.breakOnce) {
+      if (this._attack(mobSystem)) return;
+      if (this.targeted) {
+        const [bx, by, bz] = this.targeted.pos;
+        this._world.setBlock(bx, by, bz, B.AIR);
+        this.breakProgress = 0;
+        this._breakTarget = null;
+      }
       return;
     }
 

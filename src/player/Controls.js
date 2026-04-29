@@ -18,6 +18,7 @@ export class Controls {
     this._breakQueued     = false;
     this._placeQueued     = false;
     this._inventoryQueued = false;
+    this._flashlightQueued = false;
     this._scrollDelta     = 0;
 
     // Touch state
@@ -46,6 +47,7 @@ export class Controls {
       this._keys[e.code] = true;
       if (e.code === 'Space')   { e.preventDefault(); this._jumpQueued = true; }
       if (e.code === 'KeyE')    this._inventoryQueued = true;
+      if (e.code === 'KeyF')    this._flashlightQueued = true;
       if (e.code === 'F3')      document.getElementById('debug').style.display =
         document.getElementById('debug').style.display === 'none' ? '' : 'none';
     });
@@ -170,10 +172,11 @@ export class Controls {
       el.addEventListener('touchstart', e => { e.preventDefault(); downFn(); }, { passive: false });
       if (upFn) el.addEventListener('touchend', e => { e.preventDefault(); upFn(); }, { passive: false });
     };
-    on('btn-jump',  () => { this._jumpQueued = true; });
-    on('btn-break', () => { this._touchBreak = true; }, () => { this._touchBreak = false; });
-    on('btn-place', () => { this._placeQueued = true; });
-    on('btn-inv',   () => { this._inventoryQueued = true; });
+    on('btn-jump',       () => { this._jumpQueued = true; });
+    on('btn-break',      () => { this._touchBreak = true; }, () => { this._touchBreak = false; });
+    on('btn-place',      () => { this._placeQueued = true; });
+    on('btn-inv',        () => { this._inventoryQueued = true; });
+    on('btn-flashlight', () => { this._flashlightQueued = true; });
   }
 
   // ─── Poll ─────────────────────────────────────────────────────────────────
@@ -195,19 +198,21 @@ export class Controls {
       break:     !!(k['KeyX']) || this._touchBreak,
       breakOnce: this._breakQueued,
       placeOnce: this._placeQueued,
-      inventory: this._inventoryQueued,
-      scroll:    this._scrollDelta,
+      inventory:   this._inventoryQueued,
+      flashlight:  this._flashlightQueued,
+      scroll:      this._scrollDelta,
       yaw:       this._yaw,
       pitch:     this._pitch,
       locked:    this._locked || touch,
     };
 
     // Reset one-shots
-    this._jumpQueued      = false;
-    this._breakQueued     = false;
-    this._placeQueued     = false;
-    this._inventoryQueued = false;
-    this._scrollDelta     = 0;
+    this._jumpQueued       = false;
+    this._breakQueued      = false;
+    this._placeQueued      = false;
+    this._inventoryQueued  = false;
+    this._flashlightQueued = false;
+    this._scrollDelta      = 0;
 
     return state;
   }

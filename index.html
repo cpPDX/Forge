@@ -11,57 +11,54 @@
     body { background: #000; overflow: hidden; touch-action: none; }
     canvas { display: block; position: fixed; inset: 0; width: 100% !important; height: 100% !important; }
 
-    /* HUD layer */
+    /* HUD */
     #hud {
       position: fixed; inset: 0;
-      pointer-events: none;
-      user-select: none;
+      pointer-events: none; user-select: none;
       font-family: 'Courier New', monospace;
     }
 
     /* Crosshair */
     .crosshair {
-      position: absolute;
-      top: 50%; left: 50%;
+      position: absolute; top: 50%; left: 50%;
       transform: translate(-50%, -50%);
       width: 24px; height: 24px;
     }
     .crosshair::before, .crosshair::after {
-      content: '';
-      position: absolute;
+      content: ''; position: absolute;
       background: rgba(255,255,255,0.85);
       box-shadow: 0 0 2px #000;
     }
     .crosshair::before { width: 2px; height: 24px; left: 11px; top: 0; }
     .crosshair::after  { width: 24px; height: 2px; left: 0; top: 11px; }
 
-    /* Bar row */
+    /* Status bars */
     #status-row {
-      position: absolute;
-      bottom: 62px; left: 50%;
+      position: absolute; bottom: 62px; left: 50%;
       transform: translateX(-50%);
       display: flex; gap: 8px; align-items: center;
     }
-    .bar-bg {
-      width: 90px; height: 9px;
-      background: rgba(0,0,0,0.5);
-      border: 1px solid #444;
-    }
+    .bar-bg { width: 90px; height: 9px; background: rgba(0,0,0,0.5); border: 1px solid #444; }
     #health-bar { background: #c00; height: 100%; transition: width 0.3s; }
     #hunger-bar { background: #a60; height: 100%; transition: width 0.3s; }
     .bar-icon { font-size: 13px; }
 
+    /* Flashlight indicator */
+    #flashlight-indicator {
+      position: absolute; top: 8px; right: 10px;
+      font-size: 13px; color: #ffe; opacity: 0.35;
+      text-shadow: 0 0 4px #ff0;
+      transition: opacity 0.2s;
+    }
+
     /* Hotbar */
     #hotbar {
-      position: absolute;
-      bottom: 10px; left: 50%;
-      transform: translateX(-50%);
-      display: flex; gap: 3px;
+      position: absolute; bottom: 10px; left: 50%;
+      transform: translateX(-50%); display: flex; gap: 3px;
     }
     .hotbar-slot {
       width: 46px; height: 46px;
-      border: 2px solid #555;
-      background: rgba(0,0,0,0.55);
+      border: 2px solid #555; background: rgba(0,0,0,0.55);
       position: relative; flex-shrink: 0;
       display: flex; align-items: center; justify-content: center;
     }
@@ -72,42 +69,54 @@
       pointer-events: none;
     }
 
-    /* Block name label */
+    /* Block name */
     #block-label {
-      position: absolute;
-      bottom: 115px; left: 50%;
+      position: absolute; bottom: 115px; left: 50%;
       transform: translateX(-50%);
-      font-size: 11px; color: #ddd;
-      text-shadow: 1px 1px 0 #000;
-      opacity: 0; transition: opacity 0.15s;
-      white-space: nowrap;
+      font-size: 11px; color: #ddd; text-shadow: 1px 1px 0 #000;
+      opacity: 0; transition: opacity 0.15s; white-space: nowrap;
     }
 
     /* Debug */
     #debug {
-      position: absolute;
-      top: 6px; left: 8px;
-      font-size: 11px; color: #fff;
-      text-shadow: 1px 1px 0 #000;
-      line-height: 1.7;
-      display: none;
+      position: absolute; top: 6px; left: 8px;
+      font-size: 11px; color: #fff; text-shadow: 1px 1px 0 #000;
+      line-height: 1.7; display: none;
     }
 
-    /* Click-to-play */
+    /* ── Click-to-play / how-to-play overlay ─────────────────────────────── */
     #click-to-play {
       position: fixed; inset: 0;
-      background: rgba(0,0,0,0.72);
+      background: rgba(0,0,0,0.82);
       color: #fff;
       display: flex; flex-direction: column;
       align-items: center; justify-content: center;
-      gap: 16px; cursor: pointer;
+      gap: 10px; cursor: pointer;
       pointer-events: all; z-index: 100;
+      padding: 20px;
     }
-    #click-to-play h1 { font-size: 52px; letter-spacing: 6px; color: #ff9900; text-shadow: 3px 3px 0 #000; }
-    #click-to-play p  { font-size: 18px; color: #aaa; }
     #click-to-play.hidden { display: none; }
+    #click-to-play h1 {
+      font-size: clamp(32px,8vw,60px); letter-spacing: 6px;
+      color: #ff9900; text-shadow: 3px 3px 0 #000;
+      font-family: 'Courier New', monospace;
+    }
+    #click-to-play .subtitle {
+      font-size: 16px; color: #ccc; margin-bottom: 10px;
+    }
+    #how-to-play {
+      background: rgba(255,255,255,0.07);
+      border: 1px solid #444;
+      padding: 14px 20px; border-radius: 4px;
+      display: grid; grid-template-columns: 1fr 1fr;
+      gap: 6px 24px; max-width: 500px; width: 100%;
+    }
+    .htp-row { display: flex; justify-content: space-between; gap: 12px; font-size: 13px; }
+    .htp-key { color: #ff9900; font-family: monospace; font-weight: bold; white-space: nowrap; }
+    .htp-desc { color: #bbb; }
+    #click-to-play .tap-hint { font-size: 14px; color: #888; margin-top: 8px; }
 
-    /* Inventory overlay */
+    /* ── Inventory / crafting ─────────────────────────────────────────────── */
     #inventory-panel {
       position: fixed; inset: 0;
       background: rgba(0,0,0,0.6);
@@ -116,10 +125,8 @@
     }
     #inventory-panel.hidden { display: none; }
     #inv-inner {
-      background: #c6c6c6;
-      border: 3px solid #555;
-      padding: 14px;
-      min-width: 340px; max-width: 90vw;
+      background: #c6c6c6; border: 3px solid #555;
+      padding: 14px; min-width: 340px; max-width: 90vw;
       max-height: 85vh; overflow-y: auto;
     }
     #inv-inner h2 { font-size: 13px; color: #333; margin-bottom: 8px; font-family: monospace; }
@@ -146,87 +153,67 @@
     .craft-name { font-size: 12px; font-weight: bold; color: #222; font-family: monospace; }
     .craft-ing  { font-size: 10px; color: #555; font-family: monospace; }
     #inv-close-btn {
-      display: block; width: 100%; margin-top: 10px;
-      padding: 6px; background: #888; border: none;
-      cursor: pointer; font-family: monospace; font-size: 12px;
+      display: block; width: 100%; margin-top: 10px; padding: 6px;
+      background: #888; border: none; cursor: pointer;
+      font-family: monospace; font-size: 12px;
     }
 
-    /* Touch controls */
+    /* ── Touch controls ───────────────────────────────────────────────────── */
     #touch-ui {
-      display: none;
-      position: fixed; inset: 0;
+      display: none; position: fixed; inset: 0;
       pointer-events: none; z-index: 10;
     }
     @media (pointer: coarse) { #touch-ui { display: block; } }
 
-    #joy-zone {
-      position: absolute; left: 0; bottom: 0;
-      width: 48%; height: 55%; pointer-events: all;
+    #joy-zone  { position: absolute; left: 0; bottom: 0; width: 48%; height: 55%; pointer-events: all; }
+    #joy-base  {
+      position: absolute; width: 100px; height: 100px; border-radius: 50%;
+      background: rgba(255,255,255,0.15); border: 2px solid rgba(255,255,255,0.3);
+      display: none; transform: translate(-50%,-50%); pointer-events: none;
     }
-    #joy-base {
-      position: absolute; width: 100px; height: 100px;
-      border-radius: 50%;
-      background: rgba(255,255,255,0.15);
-      border: 2px solid rgba(255,255,255,0.3);
-      display: none; transform: translate(-50%,-50%);
-      pointer-events: none;
-    }
-    #joy-knob {
-      position: absolute; width: 44px; height: 44px;
-      border-radius: 50%;
+    #joy-knob  {
+      position: absolute; width: 44px; height: 44px; border-radius: 50%;
       background: rgba(255,255,255,0.4);
-      display: none; transform: translate(-50%,-50%);
-      pointer-events: none;
+      display: none; transform: translate(-50%,-50%); pointer-events: none;
     }
-    #look-zone {
-      position: absolute; right: 0; bottom: 80px;
-      width: 52%; height: calc(55% - 80px);
-      pointer-events: all;
-    }
+    #look-zone { position: absolute; right: 0; bottom: 80px; width: 52%; height: calc(55% - 80px); pointer-events: all; }
+
     .touch-btn {
       position: absolute; border-radius: 10px;
-      background: rgba(255,255,255,0.18);
-      border: 2px solid rgba(255,255,255,0.3);
+      background: rgba(255,255,255,0.18); border: 2px solid rgba(255,255,255,0.3);
       color: #fff; font-size: 13px;
       display: flex; align-items: center; justify-content: center;
       pointer-events: all;
     }
-    #btn-jump  { right: 16px; bottom: 110px; width: 60px; height: 60px; border-radius: 50%; font-size: 22px; }
-    #btn-break { right: 90px;  bottom: 20px; width: 70px; height: 50px; }
-    #btn-place { right: 16px;  bottom: 20px; width: 70px; height: 50px; }
-    #btn-inv   { right: 16px;  top: 16px;    width: 50px; height: 36px; font-size: 10px; }
+    #btn-jump       { right: 16px; bottom: 110px; width: 60px; height: 60px; border-radius: 50%; font-size: 22px; }
+    #btn-break      { right: 90px;  bottom: 20px; width: 70px; height: 50px; }
+    #btn-place      { right: 16px;  bottom: 20px; width: 70px; height: 50px; }
+    #btn-inv        { right: 16px;  top: 60px;    width: 50px; height: 36px; font-size: 10px; }
+    #btn-flashlight { right: 16px;  top: 16px;    width: 50px; height: 36px; font-size: 16px; }
 
     /* Portrait warning */
     #portrait-msg {
-      display: none;
-      position: fixed; inset: 0;
-      background: #000; color: #fff;
-      flex-direction: column;
+      display: none; position: fixed; inset: 0;
+      background: #000; color: #fff; flex-direction: column;
       align-items: center; justify-content: center;
-      font-family: sans-serif; font-size: 18px; text-align: center;
-      z-index: 999;
+      font-family: sans-serif; font-size: 18px; text-align: center; z-index: 999;
     }
     #portrait-msg span { font-size: 52px; margin-bottom: 16px; display: block; }
-    @media (orientation: portrait) and (pointer: coarse) {
-      #portrait-msg { display: flex; }
-    }
+    @media (orientation: portrait) and (pointer: coarse) { #portrait-msg { display: flex; } }
   </style>
 </head>
 <body>
-  <!-- Three.js renders directly to this canvas -->
   <canvas id="game-canvas"></canvas>
 
-  <!-- HUD overlay -->
+  <!-- HUD -->
   <div id="hud">
     <div class="crosshair"></div>
-
     <div id="status-row">
       <span class="bar-icon">❤</span>
       <div class="bar-bg"><div id="health-bar" style="width:100%"></div></div>
       <span class="bar-icon" style="margin-left:10px">🍗</span>
       <div class="bar-bg"><div id="hunger-bar" style="width:100%"></div></div>
     </div>
-
     <div id="hotbar">
       <div class="hotbar-slot selected" id="slot-0"></div>
       <div class="hotbar-slot" id="slot-1"></div>
@@ -238,16 +225,31 @@
       <div class="hotbar-slot" id="slot-7"></div>
       <div class="hotbar-slot" id="slot-8"></div>
     </div>
-
     <div id="block-label"></div>
+    <div id="flashlight-indicator">🔦</div>
     <div id="debug"></div>
   </div>
 
-  <!-- Pointer lock overlay (desktop) -->
+  <!-- Click-to-play / How to play -->
   <div id="click-to-play">
     <h1>FORGE</h1>
-    <p>Click to Play</p>
-    <p style="font-size:13px;color:#666;margin-top:8px;">WASD · Space · Mouse · E=Inventory · F3=Debug · 1-9=Hotbar</p>
+    <p class="subtitle">A voxel survival world</p>
+
+    <div id="how-to-play">
+      <div class="htp-row"><span class="htp-key">WASD</span><span class="htp-desc">Move</span></div>
+      <div class="htp-row"><span class="htp-key">Mouse</span><span class="htp-desc">Look around</span></div>
+      <div class="htp-row"><span class="htp-key">Space</span><span class="htp-desc">Jump</span></div>
+      <div class="htp-row"><span class="htp-key">Shift</span><span class="htp-desc">Sprint</span></div>
+      <div class="htp-row"><span class="htp-key">Left click</span><span class="htp-desc">Break block</span></div>
+      <div class="htp-row"><span class="htp-key">Right click</span><span class="htp-desc">Place block</span></div>
+      <div class="htp-row"><span class="htp-key">Scroll / 1–9</span><span class="htp-desc">Switch hotbar</span></div>
+      <div class="htp-row"><span class="htp-key">E</span><span class="htp-desc">Inventory &amp; craft</span></div>
+      <div class="htp-row"><span class="htp-key">F</span><span class="htp-desc">Toggle flashlight</span></div>
+      <div class="htp-row"><span class="htp-key">F3</span><span class="htp-desc">Debug info</span></div>
+    </div>
+
+    <p class="tap-hint">Click anywhere to start &mdash; pointer will be captured</p>
+    <p style="font-size:11px;color:#555;margin-top:4px;">Mobile: tap to start, use joystick + look zone</p>
   </div>
 
   <!-- Inventory / crafting panel -->
@@ -270,13 +272,14 @@
     <div id="joy-base"></div>
     <div id="joy-knob"></div>
     <div id="look-zone"></div>
+    <div class="touch-btn" id="btn-flashlight">🔦</div>
+    <div class="touch-btn" id="btn-inv">Inv</div>
     <div class="touch-btn" id="btn-jump">⬆</div>
     <div class="touch-btn" id="btn-break">Break</div>
     <div class="touch-btn" id="btn-place">Place</div>
-    <div class="touch-btn" id="btn-inv">Inv</div>
   </div>
 
-  <!-- Portrait lock warning -->
+  <!-- Portrait warning -->
   <div id="portrait-msg">
     <span>↻</span>
     <p>Rotate to landscape to play FORGE</p>

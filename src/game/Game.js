@@ -34,7 +34,9 @@ export class Game {
     // Lighting
     this._ambient = new THREE.AmbientLight(0xffffff, 0.5);
     this._sun     = new THREE.DirectionalLight(0xfff8e0, 1.0);
-    this._scene.add(this._ambient, this._sun);
+    this._flashlight = new THREE.PointLight(0xfff0cc, 0, 14, 1.5);
+    this._flashlightOn = false;
+    this._scene.add(this._ambient, this._sun, this._flashlight);
 
     // Block selection outline
     this._outline = this._makeOutline();
@@ -211,6 +213,12 @@ export class Game {
       if (this._inventoryOpen) this._refreshCraftingUI();
     }
 
+    // Flashlight toggle
+    if (input.flashlight) {
+      this._flashlightOn = !this._flashlightOn;
+      this._updateFlashlightIcon();
+    }
+
     // Hotbar scroll
     if (input.scroll !== 0) {
       this._inventory.scrollSelect(input.scroll);
@@ -237,6 +245,7 @@ export class Game {
 
     this._streamChunks();
     this._updateOutline();
+    this._updateFlashlight();
 
     this._time.update(dt);
     this._time.applyToScene(this._scene, this._renderer, this._ambient, this._sun);
@@ -258,6 +267,22 @@ export class Game {
     }
 
     this._renderer.render(this._scene, this._camera);
+  }
+
+  // ─── Flashlight ──────────────────────────────────────────────────────────
+
+  _updateFlashlight() {
+    if (this._flashlightOn) {
+      this._flashlight.position.copy(this._camera.position);
+      this._flashlight.intensity = 1.8;
+    } else {
+      this._flashlight.intensity = 0;
+    }
+  }
+
+  _updateFlashlightIcon() {
+    const el = document.getElementById('flashlight-indicator');
+    if (el) el.style.opacity = this._flashlightOn ? '1' : '0.35';
   }
 
   // ─── Crafting UI ─────────────────────────────────────────────────────────

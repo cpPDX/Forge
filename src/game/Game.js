@@ -129,13 +129,25 @@ export class Game {
   }
 
   _bindInventoryUI() {
-    // Crafting buttons wired in HTML via onclick — we just expose craft()
     window.__game = this;
+
+    // Hotbar slots need pointer events for touch/click slot selection
+    for (let i = 0; i < 9; i++) {
+      const el = document.getElementById(`slot-${i}`);
+      if (!el) continue;
+      el.addEventListener('click',      () => { this._inventory.selectSlot(i); this._hud.updateHotbar(this._inventory); });
+      el.addEventListener('touchstart', e  => { e.preventDefault(); this._inventory.selectSlot(i); this._hud.updateHotbar(this._inventory); }, { passive: false });
+    }
   }
 
-  // Called from HTML crafting buttons
+  closeInventory() {
+    this._inventoryOpen = false;
+    this._hud.showInventory(false);
+  }
+
+  // Called from HTML crafting buttons (index into full recipe list)
   craft(idx) {
-    this._crafting.craft(idx, this._inventory);
+    this._crafting.craftByIndex(idx, this._inventory);
     this._hud.updateHotbar(this._inventory);
     this._refreshCraftingUI();
   }
@@ -225,9 +237,12 @@ export class Game {
       this._updateFlashlightIcon();
     }
 
-    // Hotbar scroll
+    // Hotbar scroll / direct key select
     if (input.scroll !== 0) {
       this._inventory.scrollSelect(input.scroll);
+    }
+    if (input.hotbarSelect >= 0) {
+      this._inventory.selectSlot(input.hotbarSelect);
     }
 
     // Player update (skip movement when inventory open)
@@ -300,17 +315,23 @@ export class Game {
   _refreshCraftingUI() {
     const el = document.getElementById('crafting-list');
     if (!el) return;
-    const avail = this._crafting.available(this._inventory);
-    el.innerHTML = avail.map((r, i) => {
+    const all = this._crafting.allRecipes();
+    el.innerHTML = all.map((r, i) => {
       const name = ItemRegistry.name(r.result.id) ?? BlockRegistry.name(r.result.id);
-      const ing  = r.ingredients.map(ig => {
+      const canCraft = r.ingredients.every(ig => this._inventory.countOf(ig.id) >= ig.count);
+      const ing = r.ingredients.map(ig => {
+        const have = this._inventory.countOf(ig.id);
         const iname = ItemRegistry.name(ig.id) ?? BlockRegistry.name(ig.id);
-        return `${ig.count}× ${iname}`;
+        const color = have >= ig.count ? '#2a8a2a' : '#aa2222';
+        return `<span style="color:${color}">${have}/${ig.count}× ${iname}</span>`;
       }).join(', ');
-      return `<div class="craft-entry" onclick="window.__game.craft(${i})">
+      const opacity = canCraft ? '1' : '0.55';
+      const cursor  = canCraft ? 'pointer' : 'default';
+      const click   = canCraft ? `onclick="window.__game.craft(${i})"` : '';
+      return `<div class="craft-entry" style="opacity:${opacity};cursor:${cursor}" ${click}>
         <span class="craft-name">${name} ×${r.result.count}</span>
         <span class="craft-ing">${ing}</span>
       </div>`;
-    }).join('') || '<div style="color:#aaa;padding:4px">Nothing craftable</div>';
+    }).join('');
   }
 }

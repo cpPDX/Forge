@@ -20,6 +20,7 @@ export class Controls {
     this._inventoryQueued = false;
     this._flashlightQueued = false;
     this._scrollDelta     = 0;
+    this._hotbarSelect    = -1;
 
     // Touch state
     this._joyId    = null;
@@ -48,6 +49,8 @@ export class Controls {
       if (e.code === 'Space')   { e.preventDefault(); this._jumpQueued = true; }
       if (e.code === 'KeyE')    this._inventoryQueued = true;
       if (e.code === 'KeyF')    this._flashlightQueued = true;
+      if (e.code >= 'Digit1' && e.code <= 'Digit9')
+        this._hotbarSelect = parseInt(e.code.slice(5)) - 1;
       if (e.code === 'F3')      document.getElementById('debug').style.display =
         document.getElementById('debug').style.display === 'none' ? '' : 'none';
     });
@@ -198,9 +201,10 @@ export class Controls {
       break:     !!(k['KeyX']) || this._touchBreak,
       breakOnce: this._breakQueued,
       placeOnce: this._placeQueued,
-      inventory:   this._inventoryQueued,
-      flashlight:  this._flashlightQueued,
-      scroll:      this._scrollDelta,
+      inventory:     this._inventoryQueued,
+      flashlight:    this._flashlightQueued,
+      scroll:        this._scrollDelta,
+      hotbarSelect:  this._hotbarSelect,
       yaw:       this._yaw,
       pitch:     this._pitch,
       locked:    this._locked || touch,
@@ -213,6 +217,7 @@ export class Controls {
     this._inventoryQueued  = false;
     this._flashlightQueued = false;
     this._scrollDelta      = 0;
+    this._hotbarSelect     = -1;
 
     return state;
   }

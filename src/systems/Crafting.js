@@ -51,5 +51,17 @@ export class Crafting {
     return true;
   }
 
+  // Craft by index into full RECIPES array (used by the "show all" UI)
+  craftByIndex(idx, inventory) {
+    const recipe = RECIPES[idx];
+    if (!recipe) return false;
+    if (!recipe.ingredients.every(ing => inventory.countOf(ing.id) >= ing.count)) return false;
+    for (const ing of recipe.ingredients) {
+      if (!inventory.removeItem(ing.id, ing.count)) return false;
+    }
+    inventory.addItem(recipe.result.id, recipe.result.count);
+    return true;
+  }
+
   allRecipes() { return RECIPES; }
 }

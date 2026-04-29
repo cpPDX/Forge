@@ -55,6 +55,7 @@
     #hotbar {
       position: absolute; bottom: 10px; left: 50%;
       transform: translateX(-50%); display: flex; gap: 3px;
+      pointer-events: all;
     }
     .hotbar-slot {
       width: 46px; height: 46px;
@@ -269,7 +270,7 @@
         <h3>CRAFTING</h3>
         <div id="crafting-list"></div>
       </div>
-      <button id="inv-close-btn" onclick="document.getElementById('inventory-panel').classList.add('hidden')">Close [E]</button>
+      <button id="inv-close-btn" onclick="window.__game.closeInventory()">Close [E]</button>
     </div>
   </div>
 

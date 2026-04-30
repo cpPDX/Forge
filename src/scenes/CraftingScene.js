@@ -29,8 +29,10 @@ export class CraftingScene extends Phaser.Scene {
       fontSize: '16px', color: '#ccccff', fontStyle: 'bold',
     }).setOrigin(0.5, 0).setDepth(202).setScrollFactor(0);
 
-    const closeZone = this.add.zone(px + panW - 18, py + 18, 28, 28).setInteractive({ useHandCursor: true }).setDepth(203);
-    this.add.text(px + panW - 18, py + 18, '✕', { fontSize: '18px', color: '#ff5555' }).setOrigin(0.5).setDepth(203).setScrollFactor(0);
+    // Close button — 44×44 touch-friendly zone
+    const closeX = px + panW - 22, closeY = py + 22;
+    this.add.text(closeX, closeY, '✕', { fontSize: '20px', color: '#ff5555' }).setOrigin(0.5).setDepth(203).setScrollFactor(0);
+    const closeZone = this.add.zone(closeX, closeY, 44, 44).setInteractive({ useHandCursor: true }).setDepth(204);
     closeZone.on('pointerdown', () => this._close());
 
     const recipes = this._crafting ? this._crafting.getAvailable(this._station) : [];

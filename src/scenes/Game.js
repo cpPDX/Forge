@@ -21,6 +21,10 @@ const HUD_EMIT_MS     = 200;
 export class Game extends Phaser.Scene {
   constructor() { super('Game'); }
 
+  // expose player/inv for overlay scenes
+  get player() { return this._player; }
+  get inv()    { return this._inv; }
+
   create(data) {
     const { seed, saveData, newGame } = data || {};
 
@@ -49,6 +53,9 @@ export class Game extends Phaser.Scene {
       this._player.hp     = saveData.player.hp     ?? this._player.maxHp;
       this._player.hunger = saveData.player.hunger ?? this._player.maxHunger;
     }
+
+    // Track HP for damage-flash detection
+    this._lastHp = this._player.hp;
 
     this._renderer = new ChunkRenderer(this, this._world);
     this._lighting = new LightingSystem(this, this._world, this._time);
@@ -100,73 +107,89 @@ export class Game extends Phaser.Scene {
   update(time, delta) {
     if (this._player.dead) return;
 
-    // Poll controls
     const zoom = CAMERA_ZOOM;
-    const input = this._controls.poll(
-      this.input.activePointer.x,
-      this.input.activePointer.y,
-      this._camX,
-      this._camY,
-      zoom
-    );
 
-    // Use food (F key)
-    if (this.input.keyboard.checkDown(this.input.keyboard.addKey('F'), 500)) {
-      this._tryEat();
+    // Check if any overlay scene is blocking gameplay
+    const overlayOpen = this.scene.isActive('InventoryScene') ||
+                        this.scene.isActive('CraftingScene')  ||
+                        this.scene.isActive('FurnaceScene');
+
+    if (!overlayOpen) {
+      // Poll controls
+      const input = this._controls.poll(
+        this.input.activePointer.x,
+        this.input.activePointer.y,
+        this._camX,
+        this._camY,
+        zoom
+      );
+
+      // Use food (F key)
+      if (this.input.keyboard.checkDown(this.input.keyboard.addKey('F'), 500)) {
+        this._tryEat();
+      }
+
+      // Inventory toggle
+      if (input.inventoryJustPressed) {
+        if (this.scene.isActive('InventoryScene')) this.scene.stop('InventoryScene');
+        else this.scene.launch('InventoryScene', { gameScene: this });
+      }
+
+      this._player.update(time, delta, input);
+      this._controls.flush();
+
+      // Damage flash when player takes a hit
+      if (this._player.hp < this._lastHp) {
+        this.registry.set('damageFlash', Date.now());
+      }
+      this._lastHp = this._player.hp;
+
+      // Update drops
+      for (let i = this._drops.length - 1; i >= 0; i--) {
+        const d = this._drops[i];
+        d.update(delta, this._world, this._player);
+        if (d.collected) this._drops.splice(i, 1);
+      }
+
+      // Update mobs
+      for (let i = this._mobs.length - 1; i >= 0; i--) {
+        const m = this._mobs[i];
+        if (m.dead) { this._mobs.splice(i, 1); continue; }
+        m.update(delta, this._world, this._player, time);
+
+        // Despawn
+        const mdx = m.x - this._player.centerX;
+        const mdy = m.y - this._player.centerY;
+        if (Math.sqrt(mdx * mdx + mdy * mdy) > MOB_DESPAWN_DIST * TILE_SIZE) {
+          m.destroy(); this._mobs.splice(i, 1);
+        }
+      }
+
+      // Mob spawning
+      this._spawnTimer += delta;
+      if (this._spawnTimer > SPAWN_INTERVAL && this._mobs.length < MAX_MOBS) {
+        this._spawnTimer = 0;
+        this._trySpawnMob();
+      }
+
+      // Time
+      this._time.update(delta);
+
+      // Autosave
+      this._saveTimer += delta;
+      if (this._saveTimer > AUTOSAVE_MS) { this._saveTimer = 0; this._doSave(); }
     }
 
-    // Inventory toggle
-    if (input.inventoryJustPressed) {
-      if (this.scene.isActive('InventoryScene')) this.scene.stop('InventoryScene');
-      else this.scene.launch('InventoryScene', { gameScene: this });
-    }
-
-    this._player.update(time, delta, input);
-    this._controls.flush();
-
-    // Camera follow
+    // Camera follow (always, so the view doesn't freeze while inventory is open)
     const targetX = this._player.centerX - GAME_WIDTH  / 2 / zoom;
     const targetY = this._player.centerY - GAME_HEIGHT / 2 / zoom;
     this._camX += (targetX - this._camX) * 0.12;
     this._camY += (targetY - this._camY) * 0.12;
-
-    // Clamp camera
-    this._camX = Math.max(0, Math.min(this._camX, this._world.seed ? Infinity : 0));
+    this._camX = Math.max(0, this._camX);
     this._camY = Math.max(0, this._camY);
 
     this._updateVisibleChunks();
     this._renderScene(zoom);
-
-    // Update drops
-    for (let i = this._drops.length - 1; i >= 0; i--) {
-      const d = this._drops[i];
-      d.update(delta, this._world, this._player);
-      if (d.collected) this._drops.splice(i, 1);
-    }
-
-    // Update mobs
-    for (let i = this._mobs.length - 1; i >= 0; i--) {
-      const m = this._mobs[i];
-      if (m.dead) { this._mobs.splice(i, 1); continue; }
-      m.update(delta, this._world, this._player, time);
-
-      // Despawn
-      const mdx = m.x - this._player.centerX;
-      const mdy = m.y - this._player.centerY;
-      if (Math.sqrt(mdx * mdx + mdy * mdy) > MOB_DESPAWN_DIST * TILE_SIZE) {
-        m.destroy(); this._mobs.splice(i, 1);
-      }
-    }
-
-    // Mob spawning
-    this._spawnTimer += delta;
-    if (this._spawnTimer > SPAWN_INTERVAL && this._mobs.length < MAX_MOBS) {
-      this._spawnTimer = 0;
-      this._trySpawnMob();
-    }
-
-    // Time
-    this._time.update(delta);
     this._updateSky();
 
     // Lighting
@@ -175,10 +198,6 @@ export class Game extends Phaser.Scene {
     // HUD emit
     this._hudTimer += delta;
     if (this._hudTimer > HUD_EMIT_MS) { this._hudTimer = 0; this._emitHUD(); }
-
-    // Autosave
-    this._saveTimer += delta;
-    if (this._saveTimer > AUTOSAVE_MS) { this._saveTimer = 0; this._doSave(); }
   }
 
   _updateVisibleChunks() {
@@ -242,16 +261,17 @@ export class Game extends Phaser.Scene {
 
   _emitHUD() {
     this.registry.set('hudState', {
-      hp:          this._player.hp,
-      maxHp:       this._player.maxHp,
-      hunger:      this._player.hunger,
-      maxHunger:   this._player.maxHunger,
-      oxygen:      this._player.oxygen,
-      inWater:     this._player.inWater,
-      hotbar:      this._inv.hotbar.map(s => s ? { ...s } : null),
-      hotbarIndex: this._inv.hotbarIndex,
-      time:        this._time.hourString,
-      isNight:     this._time.isNight,
+      hp:            this._player.hp,
+      maxHp:         this._player.maxHp,
+      hunger:        this._player.hunger,
+      maxHunger:     this._player.maxHunger,
+      oxygen:        this._player.oxygen,
+      inWater:       this._player.inWater,
+      hotbar:        this._inv.hotbar.map(s => s ? { ...s } : null),
+      hotbarIndex:   this._inv.hotbarIndex,
+      time:          this._time.hourString,
+      isNight:       this._time.isNight,
+      breakProgress: this._player.breakProgress,
     });
   }
 
@@ -377,6 +397,8 @@ export class Game extends Phaser.Scene {
       time:      this._time.serialize(),
       chunks:    {},
     });
+    // Notify HUD to show save confirmation toast
+    this.registry.set('saveToast', Date.now());
   }
 
   _serializeModifiedChunks() { return {}; }

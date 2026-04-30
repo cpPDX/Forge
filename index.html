@@ -11,11 +11,14 @@
     body { background: #000; overflow: hidden; touch-action: none; }
     canvas { display: block; position: fixed; inset: 0; width: 100% !important; height: 100% !important; }
 
-    /* HUD */
+    /* HUD — z-index:15 puts it above #touch-ui (z-index:10) so #hotbar
+       (pointer-events:all) wins over joy-zone for slot taps, while
+       pointer-events:none on #hud lets everything else fall through */
     #hud {
       position: fixed; inset: 0;
       pointer-events: none; user-select: none;
       font-family: 'Courier New', monospace;
+      z-index: 15;
     }
 
     /* Crosshair */
@@ -62,7 +65,9 @@
       border: 2px solid #555; background: rgba(0,0,0,0.55);
       position: relative; flex-shrink: 0;
       display: flex; align-items: center; justify-content: center;
+      touch-action: manipulation; cursor: pointer;
     }
+    .hotbar-slot:active { border-color: rgba(255,255,255,0.6); background: rgba(255,255,255,0.15) !important; }
     .hotbar-slot.selected { border-color: #fff; box-shadow: 0 0 0 1px #fff inset; }
     .slot-count {
       position: absolute; bottom: 2px; right: 3px;
@@ -123,14 +128,36 @@
       background: rgba(0,0,0,0.6);
       display: flex; align-items: center; justify-content: center;
       z-index: 50; pointer-events: all;
+      /* backdrop tap-to-close — cursor hints it's dismissible */
+      cursor: pointer;
     }
     #inventory-panel.hidden { display: none; }
     #inv-inner {
       background: #c6c6c6; border: 3px solid #555;
       padding: 14px; min-width: 340px; max-width: 90vw;
       max-height: 85vh; overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+      cursor: default;
     }
-    #inv-inner h2 { font-size: 13px; color: #333; margin-bottom: 8px; font-family: monospace; }
+
+    /* Inventory header: title + X dismiss button */
+    #inv-header {
+      display: flex; justify-content: space-between; align-items: center;
+      margin-bottom: 8px;
+    }
+    #inv-header span {
+      font-size: 13px; color: #333; font-family: monospace;
+      font-weight: bold; letter-spacing: 1px;
+    }
+    #inv-x-btn {
+      min-width: 44px; height: 44px;
+      background: #555; border: 2px solid #333; color: #fff;
+      font-size: 18px; cursor: pointer; border-radius: 4px;
+      display: flex; align-items: center; justify-content: center;
+      touch-action: manipulation; font-family: monospace;
+    }
+    #inv-x-btn:active { background: #222; }
+
     .inv-grid {
       display: grid; grid-template-columns: repeat(9, 36px);
       gap: 3px; margin-bottom: 6px;
@@ -145,20 +172,30 @@
     }
     #craft-section { margin-top: 10px; border-top: 2px solid #aaa; padding-top: 8px; }
     #craft-section h3 { font-size: 12px; color: #444; margin-bottom: 6px; font-family: monospace; }
-    #crafting-list { max-height: 180px; overflow-y: auto; }
+    #crafting-list {
+      max-height: 180px; overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+    }
     .craft-entry {
       display: flex; flex-direction: column;
-      padding: 5px 8px; cursor: pointer;
+      padding: 8px 8px; cursor: pointer;
       border-bottom: 1px solid #aaa;
+      touch-action: manipulation;
     }
-    .craft-entry:hover { background: #bbb; }
+    .craft-entry:hover  { background: #bbb; }
+    .craft-entry:active { background: #999; }
     .craft-name { font-size: 12px; font-weight: bold; color: #222; font-family: monospace; }
-    .craft-ing  { font-size: 10px; color: #555; font-family: monospace; }
+    .craft-ing  { font-size: 10px; color: #555; font-family: monospace; margin-top: 2px; }
+
+    /* Bottom close button — red so it's unmistakably "exit" */
     #inv-close-btn {
-      display: block; width: 100%; margin-top: 10px; padding: 6px;
-      background: #888; border: none; cursor: pointer;
-      font-family: monospace; font-size: 12px;
+      display: block; width: 100%; margin-top: 12px; padding: 12px 6px;
+      background: #c03030; border: 2px solid #902020; cursor: pointer;
+      font-family: monospace; font-size: 13px; color: #fff;
+      font-weight: bold; letter-spacing: 1px;
+      touch-action: manipulation;
     }
+    #inv-close-btn:active { background: #902020; }
 
     /* ── Touch controls ───────────────────────────────────────────────────── */
     #touch-ui {
@@ -178,20 +215,25 @@
       background: rgba(255,255,255,0.4);
       display: none; transform: translate(-50%,-50%); pointer-events: none;
     }
-    #look-zone { position: absolute; right: 0; bottom: 80px; width: 52%; height: calc(55% - 80px); pointer-events: all; }
+
+    /* Look zone now covers full right column — makes looking up/down much easier */
+    #look-zone { position: absolute; right: 0; top: 0; bottom: 80px; width: 52%; pointer-events: all; }
 
     .touch-btn {
       position: absolute; border-radius: 10px;
       background: rgba(255,255,255,0.18); border: 2px solid rgba(255,255,255,0.3);
       color: #fff; font-size: 13px;
       display: flex; align-items: center; justify-content: center;
-      pointer-events: all;
+      pointer-events: all; touch-action: manipulation;
+      font-family: 'Courier New', monospace; font-weight: bold;
     }
-    #btn-jump       { right: 16px; bottom: 110px; width: 60px; height: 60px; border-radius: 50%; font-size: 22px; }
-    #btn-break      { right: 90px;  bottom: 20px; width: 70px; height: 50px; }
-    #btn-place      { right: 16px;  bottom: 20px; width: 70px; height: 50px; }
-    #btn-inv        { right: 16px;  top: 60px;    width: 50px; height: 36px; font-size: 10px; }
-    #btn-flashlight { right: 16px;  top: 16px;    width: 50px; height: 36px; font-size: 16px; }
+    .touch-btn:active { background: rgba(255,255,255,0.45); border-color: rgba(255,255,255,0.7); }
+
+    #btn-jump       { right: 16px; bottom: 110px; width: 64px; height: 64px; border-radius: 50%; font-size: 26px; }
+    #btn-break      { right: 90px;  bottom: 20px; width: 72px; height: 54px; }
+    #btn-place      { right: 16px;  bottom: 20px; width: 72px; height: 54px; }
+    #btn-inv        { right: 16px;  top: 60px;    width: 54px; height: 44px; font-size: 10px; }
+    #btn-flashlight { right: 16px;  top: 10px;    width: 54px; height: 44px; font-size: 18px; }
 
     /* Damage flash */
     #dmg-flash {
@@ -249,7 +291,7 @@
       <div class="htp-row"><span class="htp-key">Mouse</span><span class="htp-desc">Look around</span></div>
       <div class="htp-row"><span class="htp-key">Space</span><span class="htp-desc">Jump</span></div>
       <div class="htp-row"><span class="htp-key">Shift</span><span class="htp-desc">Sprint</span></div>
-      <div class="htp-row"><span class="htp-key">Left click</span><span class="htp-desc">Break block</span></div>
+      <div class="htp-row"><span class="htp-key">Left click / hold</span><span class="htp-desc">Break block</span></div>
       <div class="htp-row"><span class="htp-key">Right click</span><span class="htp-desc">Place block</span></div>
       <div class="htp-row"><span class="htp-key">Scroll / 1–9</span><span class="htp-desc">Switch hotbar</span></div>
       <div class="htp-row"><span class="htp-key">E</span><span class="htp-desc">Inventory &amp; craft</span></div>
@@ -264,14 +306,19 @@
   <!-- Inventory / crafting panel -->
   <div id="inventory-panel" class="hidden">
     <div id="inv-inner">
-      <h2>INVENTORY</h2>
+      <!-- Header with title and prominent X close button -->
+      <div id="inv-header">
+        <span>INVENTORY</span>
+        <button id="inv-x-btn">✕</button>
+      </div>
       <div class="inv-grid" id="inv-main-grid"></div>
       <div class="inv-grid" id="inv-hotbar-grid"></div>
       <div id="craft-section">
         <h3>CRAFTING</h3>
         <div id="crafting-list"></div>
       </div>
-      <button id="inv-close-btn" onclick="window.__game.closeInventory()">Close [E]</button>
+      <!-- Red close button at bottom reachable by thumb -->
+      <button id="inv-close-btn">✕  CLOSE</button>
     </div>
   </div>
 
@@ -282,10 +329,10 @@
     <div id="joy-knob"></div>
     <div id="look-zone"></div>
     <div class="touch-btn" id="btn-flashlight">🔦</div>
-    <div class="touch-btn" id="btn-inv">Inv</div>
-    <div class="touch-btn" id="btn-jump">⬆</div>
-    <div class="touch-btn" id="btn-break">Break</div>
-    <div class="touch-btn" id="btn-place">Place</div>
+    <div class="touch-btn" id="btn-inv">⚙ Inv</div>
+    <div class="touch-btn" id="btn-jump">▲</div>
+    <div class="touch-btn" id="btn-break">⛏ Break</div>
+    <div class="touch-btn" id="btn-place">▣ Place</div>
   </div>
 
   <!-- Damage vignette flash -->

@@ -131,7 +131,43 @@ export class Game {
   _bindInventoryUI() {
     window.__game = this;
 
-    // Hotbar slots need pointer events for touch/click slot selection
+    // Wire both close buttons (bottom bar + top-right X) with touchstart so
+    // Safari iOS fires immediately without waiting for a synthesized click
+    const closeEl = e => { e.preventDefault(); this.closeInventory(); };
+    for (const id of ['inv-close-btn', 'inv-x-btn']) {
+      const btn = document.getElementById(id);
+      if (!btn) continue;
+      btn.addEventListener('click',      () => this.closeInventory());
+      btn.addEventListener('touchstart', closeEl, { passive: false });
+    }
+
+    // Tapping the dark backdrop (anywhere outside #inv-inner) also closes
+    const panel = document.getElementById('inventory-panel');
+    if (panel) {
+      panel.addEventListener('touchstart', e => {
+        if (e.target === panel) { e.preventDefault(); this.closeInventory(); }
+      }, { passive: false });
+      panel.addEventListener('click', e => {
+        if (e.target === panel) this.closeInventory();
+      });
+    }
+
+    // Crafting list — touchstart delegation so taps fire without click delay.
+    // data-craft-idx is set only on craftable entries in _refreshCraftingUI.
+    // touchstart calls preventDefault so the subsequent click doesn't double-fire.
+    const craftList = document.getElementById('crafting-list');
+    if (craftList) {
+      craftList.addEventListener('touchstart', e => {
+        const entry = e.target.closest('[data-craft-idx]');
+        if (entry) { e.preventDefault(); this.craft(parseInt(entry.dataset.craftIdx)); }
+      }, { passive: false });
+      craftList.addEventListener('click', e => {
+        const entry = e.target.closest('[data-craft-idx]');
+        if (entry) this.craft(parseInt(entry.dataset.craftIdx));
+      });
+    }
+
+    // Hotbar slots — touchstart for immediate response, click for desktop
     for (let i = 0; i < 9; i++) {
       const el = document.getElementById(`slot-${i}`);
       if (!el) continue;
@@ -329,10 +365,10 @@ export class Game {
         const color = have >= ig.count ? '#2a8a2a' : '#aa2222';
         return `<span style="color:${color}">${have}/${ig.count}× ${iname}</span>`;
       }).join(', ');
-      const opacity = canCraft ? '1' : '0.55';
-      const cursor  = canCraft ? 'pointer' : 'default';
-      const click   = canCraft ? `onclick="window.__game.craft(${i})"` : '';
-      return `<div class="craft-entry" style="opacity:${opacity};cursor:${cursor}" ${click}>
+      const opacity  = canCraft ? '1' : '0.55';
+      const cursor   = canCraft ? 'pointer' : 'default';
+      const dataAttr = canCraft ? `data-craft-idx="${i}"` : '';
+      return `<div class="craft-entry" style="opacity:${opacity};cursor:${cursor}" ${dataAttr}>
         <span class="craft-name">${name} ×${r.result.count}</span>
         <span class="craft-ing">${ing}</span>
       </div>`;

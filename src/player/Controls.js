@@ -95,12 +95,26 @@ export class Controls {
       ctp.addEventListener('click', () => {
         this._canvas.requestPointerLock();
       });
+      // Fallback for hybrid devices: first touch on the overlay activates touch mode
+      ctp.addEventListener('touchstart', e => {
+        e.preventDefault();
+        this._isTouchDevice = true;
+        ctp.classList.add('hidden');
+      }, { passive: false });
     }
   }
 
   // ─── Touch controls ───────────────────────────────────────────────────────
 
   _bindTouch() {
+    // Detect touch device using the same media query the CSS uses to show
+    // #touch-ui. Do this immediately so the click-to-play overlay (z-index:100)
+    // doesn't sit on top of the joy/look zones and block all touch input.
+    if (window.matchMedia('(pointer: coarse)').matches) {
+      this._isTouchDevice = true;
+      document.getElementById('click-to-play')?.classList.add('hidden');
+    }
+
     const joyZone  = document.getElementById('joy-zone');
     const lookZone = document.getElementById('look-zone');
     const joyBase  = document.getElementById('joy-base');

@@ -131,6 +131,16 @@ export class Game {
   _bindInventoryUI() {
     window.__game = this;
 
+    // Close button: wire touchstart directly so Safari iOS doesn't need a
+    // synthesized click (which can be delayed or dropped on non-interactive elements)
+    const closeBtn = document.getElementById('inv-close-btn');
+    if (closeBtn) {
+      closeBtn.addEventListener('touchstart', e => {
+        e.preventDefault();
+        this.closeInventory();
+      }, { passive: false });
+    }
+
     // Hotbar slots need pointer events for touch/click slot selection
     for (let i = 0; i < 9; i++) {
       const el = document.getElementById(`slot-${i}`);

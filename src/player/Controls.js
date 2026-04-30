@@ -20,6 +20,8 @@ export class Controls {
     this._inventoryQueued = false;
     this._flashlightQueued = false;
     this._scrollDelta     = 0;
+    this._hotbarSelect    = -1;
+    this._mouseBreakHeld  = false;
 
     // Touch state
     this._joyId    = null;
@@ -48,8 +50,12 @@ export class Controls {
       if (e.code === 'Space')   { e.preventDefault(); this._jumpQueued = true; }
       if (e.code === 'KeyE')    this._inventoryQueued = true;
       if (e.code === 'KeyF')    this._flashlightQueued = true;
-      if (e.code === 'F3')      document.getElementById('debug').style.display =
-        document.getElementById('debug').style.display === 'none' ? '' : 'none';
+      if (e.code >= 'Digit1' && e.code <= 'Digit9')
+        this._hotbarSelect = parseInt(e.code.slice(5)) - 1;
+      if (e.code === 'F3') {
+        const d = document.getElementById('debug');
+        if (d) d.style.display = d.style.display === 'block' ? 'none' : 'block';
+      }
     });
     window.addEventListener('keyup', e => { this._keys[e.code] = false; });
   }
@@ -69,8 +75,15 @@ export class Controls {
     });
     document.addEventListener('mousedown', e => {
       if (!this._locked) return;
-      if (e.button === 0) this._breakQueued = true;
+      if (e.button === 0) { this._breakQueued = true; this._mouseBreakHeld = true; }
       if (e.button === 2) this._placeQueued = true;
+    });
+    document.addEventListener('mouseup', e => {
+      if (e.button === 0) this._mouseBreakHeld = false;
+    });
+    // Canvas click allows locking on desktop without needing click-to-play
+    this._canvas.addEventListener('click', () => {
+      if (!this._locked && !this._isTouchDevice) this._canvas.requestPointerLock();
     });
     document.addEventListener('contextmenu', e => e.preventDefault());
     document.addEventListener('wheel', e => {
@@ -94,12 +107,13 @@ export class Controls {
     const joyKnob  = document.getElementById('joy-knob');
 
     if (!joyZone) return;
-    this._isTouchDevice = true;
 
     const onDown = (zone, e) => {
-      this._isTouchDevice = true;
+      if (!this._isTouchDevice) {
+        this._isTouchDevice = true;
+        document.getElementById('click-to-play')?.classList.add('hidden');
+      }
       for (const t of e.changedTouches) {
-        const rect = zone.getBoundingClientRect();
         if (zone === joyZone && this._joyId === null) {
           this._joyId = t.identifier;
           this._joyBaseX = t.clientX;
@@ -159,10 +173,6 @@ export class Controls {
     window.addEventListener('touchmove',    onMove, { passive: false });
     window.addEventListener('touchend',     onUp,   { passive: false });
     window.addEventListener('touchcancel',  onUp,   { passive: false });
-
-    // Hide click-to-play on touch
-    const ctp = document.getElementById('click-to-play');
-    if (ctp) ctp.classList.add('hidden');
   }
 
   _bindButtons() {
@@ -173,7 +183,7 @@ export class Controls {
       if (upFn) el.addEventListener('touchend', e => { e.preventDefault(); upFn(); }, { passive: false });
     };
     on('btn-jump',       () => { this._jumpQueued = true; });
-    on('btn-break',      () => { this._touchBreak = true; }, () => { this._touchBreak = false; });
+    on('btn-break',      () => { this._touchBreak = true; this._breakQueued = true; }, () => { this._touchBreak = false; });
     on('btn-place',      () => { this._placeQueued = true; });
     on('btn-inv',        () => { this._inventoryQueued = true; });
     on('btn-flashlight', () => { this._flashlightQueued = true; });
@@ -195,12 +205,13 @@ export class Controls {
     const state = {
       forward, back, left, right, sprint, sneak,
       jump:      this._jumpQueued,
-      break:     !!(k['KeyX']) || this._touchBreak,
+      break:     !!(k['KeyX']) || this._touchBreak || this._mouseBreakHeld,
       breakOnce: this._breakQueued,
       placeOnce: this._placeQueued,
-      inventory:   this._inventoryQueued,
-      flashlight:  this._flashlightQueued,
-      scroll:      this._scrollDelta,
+      inventory:     this._inventoryQueued,
+      flashlight:    this._flashlightQueued,
+      scroll:        this._scrollDelta,
+      hotbarSelect:  this._hotbarSelect,
       yaw:       this._yaw,
       pitch:     this._pitch,
       locked:    this._locked || touch,
@@ -213,6 +224,7 @@ export class Controls {
     this._inventoryQueued  = false;
     this._flashlightQueued = false;
     this._scrollDelta      = 0;
+    this._hotbarSelect     = -1;
 
     return state;
   }

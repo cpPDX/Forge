@@ -3,33 +3,34 @@ import { CHUNK_SIZE, CHUNK_HEIGHT, B } from '../utils/constants.js';
 import { BlockRegistry } from '../blocks/BlockRegistry.js';
 import { tileUV } from '../blocks/TextureAtlas.js';
 
-// Face definitions: [dir, normal, 4 vertex offsets, faceIndex into block.faces]
-// Vertex order is CCW when viewed from outside (Three.js default)
+// Face definitions — vertex order is CCW when viewed from outside (Three.js FrontSide default).
+// Pattern per face: BL→BR→TR→TL in screen-space.
+// UV: V=1 at block bottom (dirt), V=0 at block top (green band) for side faces.
 const FACES = [
-  // +X (east)
+  // +X (east)  — looking from +X: screen-right = -Z
   { dir:[1,0,0],  norm:[1,0,0],  fi:0,
-    verts:[[1,0,1],[1,1,1],[1,1,0],[1,0,0]],
-    uvs:  [[0,1],[0,0],[1,0],[1,1]] },
-  // -X (west)
+    verts:[[1,0,1],[1,0,0],[1,1,0],[1,1,1]],
+    uvs:  [[0,1],[1,1],[1,0],[0,0]] },
+  // -X (west)  — looking from -X: screen-right = +Z
   { dir:[-1,0,0], norm:[-1,0,0], fi:1,
-    verts:[[0,0,0],[0,1,0],[0,1,1],[0,0,1]],
-    uvs:  [[0,1],[0,0],[1,0],[1,1]] },
-  // +Y (top)
+    verts:[[0,0,0],[0,0,1],[0,1,1],[0,1,0]],
+    uvs:  [[0,1],[1,1],[1,0],[0,0]] },
+  // +Y (top)   — looking from above: screen-right = +X, up = -Z
   { dir:[0,1,0],  norm:[0,1,0],  fi:2,
     verts:[[0,1,1],[1,1,1],[1,1,0],[0,1,0]],
     uvs:  [[0,0],[1,0],[1,1],[0,1]] },
-  // -Y (bottom)
+  // -Y (bottom)— looking from below: screen-right = -X, up = -Z
   { dir:[0,-1,0], norm:[0,-1,0], fi:3,
-    verts:[[0,0,0],[1,0,0],[1,0,1],[0,0,1]],
-    uvs:  [[0,1],[1,1],[1,0],[0,0]] },
-  // +Z (south)
+    verts:[[1,0,1],[0,0,1],[0,0,0],[1,0,0]],
+    uvs:  [[0,0],[1,0],[1,1],[0,1]] },
+  // +Z (south) — looking from +Z: screen-right = +X
   { dir:[0,0,1],  norm:[0,0,1],  fi:4,
-    verts:[[0,0,1],[0,1,1],[1,1,1],[1,0,1]],
-    uvs:  [[1,1],[1,0],[0,0],[0,1]] },
-  // -Z (north)
+    verts:[[0,0,1],[1,0,1],[1,1,1],[0,1,1]],
+    uvs:  [[0,1],[1,1],[1,0],[0,0]] },
+  // -Z (north) — looking from -Z: screen-right = -X
   { dir:[0,0,-1], norm:[0,0,-1], fi:5,
-    verts:[[1,0,0],[1,1,0],[0,1,0],[0,0,0]],
-    uvs:  [[1,1],[1,0],[0,0],[0,1]] },
+    verts:[[1,0,0],[0,0,0],[0,1,0],[1,1,0]],
+    uvs:  [[0,1],[1,1],[1,0],[0,0]] },
 ];
 
 export class ChunkMesh {

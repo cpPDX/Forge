@@ -155,7 +155,7 @@ export class Game extends Phaser.Scene {
       for (let i = this._mobs.length - 1; i >= 0; i--) {
         const m = this._mobs[i];
         if (m.dead) { this._mobs.splice(i, 1); continue; }
-        m.update(delta, this._world, this._player, time);
+        m.update(delta, this._world, this._player, time, this._time.isDay);
 
         // Despawn
         const mdx = m.x - this._player.centerX;

@@ -142,9 +142,10 @@ export class Player {
     this.onGround = false;
     if (this._blockCheck(nx, ny, nz, w, h)) {
       if (this.vy < 0) {
-        // Landing
-        const fallSpeed = -this._fallDmgVy;
-        if (fallSpeed > 8) this._takeDamage(Math.floor(fallSpeed - 8));
+        // Landing — convert velocity to equivalent fall distance: d = v²/(2g)
+        const fallSpeed  = -this._fallDmgVy;
+        const fallBlocks = (fallSpeed * fallSpeed) / (2 * 28);
+        if (fallBlocks > 3) this._takeDamage(Math.floor(fallBlocks - 3));
         this.onGround = true;
       }
       ny = this.y;
@@ -215,7 +216,10 @@ export class Player {
       if (this._attack(mobSystem)) return;
       if (this.targeted) {
         const [bx, by, bz] = this.targeted.pos;
+        const id = this._world.getBlock(bx, by, bz);
+        const def = BlockRegistry.get(id);
         this._world.setBlock(bx, by, bz, B.AIR);
+        if (def?.drops != null && this.inventory) this.inventory.addItem(def.drops, 1);
         this.breakProgress = 0;
         this._breakTarget = null;
       }
@@ -235,7 +239,10 @@ export class Player {
 
       this.breakProgress += dt / (hard + 0.3);
       if (this.breakProgress >= 1) {
+        const bId  = this._world.getBlock(t[0], t[1], t[2]);
+        const bDef = BlockRegistry.get(bId);
         this._world.setBlock(t[0], t[1], t[2], B.AIR);
+        if (bDef?.drops != null && this.inventory) this.inventory.addItem(bDef.drops, 1);
         this.breakProgress = 0;
         this._breakTarget = null;
       }
@@ -286,6 +293,14 @@ export class Player {
 
   _takeDamage(amount) {
     this.hp = Math.max(0, this.hp - amount);
+  }
+
+  knockback(fromX, fromZ) {
+    const dx = this.x - fromX, dz = this.z - fromZ;
+    const len = Math.sqrt(dx * dx + dz * dz) || 1;
+    this.vx = (dx / len) * 8;
+    this.vz = (dz / len) * 8;
+    this.vy = 4;
   }
 
   // ─── Serialize ───────────────────────────────────────────────────────────

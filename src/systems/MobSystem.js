@@ -11,12 +11,13 @@ class Zombie {
     this.vx = 0; this.vy = 0; this.vz = 0;
     this.hp = 20; this.maxHp = 20;
     this.onGround    = false;
-    this.attackTimer = 0;
-    this.hitFlash    = 0;
-    this.mesh        = null;
-    this.hpBar       = null;
-    this.dead        = false;
-    this.id          = _nextId++;
+    this.attackTimer   = 0;
+    this.hitFlash      = 0;
+    this.mesh          = null;
+    this.hpBar         = null;
+    this.dead          = false;
+    this.id            = _nextId++;
+    this._sunBurnTimer = 0;
   }
 }
 
@@ -30,8 +31,9 @@ export class MobSystem {
     this._maxMobs    = 15;
 
     // Shared materials — cloned per-mob only when flashing
-    this._matBody  = new THREE.MeshLambertMaterial({ color: 0x2d8a2d });
-    this._matHead  = new THREE.MeshLambertMaterial({ color: 0x3daa3d });
+    this._matSkin  = new THREE.MeshLambertMaterial({ color: 0x7aaa6a }); // zombie flesh
+    this._matShirt = new THREE.MeshLambertMaterial({ color: 0x2d6a44 }); // torn shirt
+    this._matPants = new THREE.MeshLambertMaterial({ color: 0x1a2a3a }); // pants
     this._matEye   = new THREE.MeshLambertMaterial({ color: 0xff2200 });
     this._matFlash = new THREE.MeshLambertMaterial({ color: 0xff4444 });
     this._matHpBg  = new THREE.MeshBasicMaterial({ color: 0x440000 });
@@ -51,18 +53,24 @@ export class MobSystem {
       return m;
     };
 
-    // Legs
+    // Legs (pants color)
     const legGeo = new THREE.BoxGeometry(0.24, 0.75, 0.28);
-    part(legGeo, this._matBody, -0.13, 0.375, 0);
-    part(legGeo, this._matBody,  0.13, 0.375, 0);
-    // Body
-    part(new THREE.BoxGeometry(0.5, 0.9, 0.3),  this._matBody, 0, 1.20, 0);
-    // Head
-    part(new THREE.BoxGeometry(0.5, 0.5, 0.5),  this._matHead, 0, 1.90, 0);
+    part(legGeo, this._matPants, -0.13, 0.375, 0);
+    part(legGeo, this._matPants,  0.13, 0.375, 0);
+    // Body (shirt color)
+    part(new THREE.BoxGeometry(0.5, 0.9, 0.3), this._matShirt, 0, 1.20, 0);
+    // Head (skin color)
+    part(new THREE.BoxGeometry(0.5, 0.5, 0.5), this._matSkin, 0, 1.90, 0);
     // Eyes
     const eyeGeo = new THREE.BoxGeometry(0.1, 0.08, 0.06);
     part(eyeGeo, this._matEye, -0.12, 1.92, 0.26);
     part(eyeGeo, this._matEye,  0.12, 1.92, 0.26);
+    // Arms outstretched forward (skin color, rotated along X)
+    const armGeo = new THREE.BoxGeometry(0.24, 0.7, 0.24);
+    const armL = part(armGeo, this._matSkin, -0.37, 1.4, 0);
+    const armR = part(armGeo, this._matSkin,  0.37, 1.4, 0);
+    armL.rotation.x = -Math.PI / 2;
+    armR.rotation.x = -Math.PI / 2;
 
     return g;
   }
@@ -141,7 +149,7 @@ export class MobSystem {
     }
 
     for (const mob of this._mobs) {
-      if (!mob.dead) this._updateMob(mob, dt, player);
+      if (!mob.dead) this._updateMob(mob, dt, player, isNight);
     }
 
     this._mobs = this._mobs.filter(m => !m.dead);
@@ -168,7 +176,7 @@ export class MobSystem {
     }
   }
 
-  _updateMob(mob, dt, player) {
+  _updateMob(mob, dt, player, isNight) {
     const dx    = player.x - mob.x;
     const dz    = player.z - mob.z;
     const distH = Math.sqrt(dx * dx + dz * dz);
@@ -209,6 +217,18 @@ export class MobSystem {
       });
     }
 
+    // Sunburn in daylight
+    if (!isNight && this._isInSunlight(mob)) {
+      mob._sunBurnTimer += dt;
+      if (mob._sunBurnTimer >= 1) {
+        mob._sunBurnTimer = 0;
+        mob.hp -= 1;
+        if (mob.hp <= 0) { this._kill(mob); return; }
+      }
+    } else {
+      mob._sunBurnTimer = 0;
+    }
+
     // Update mesh
     mob.mesh.position.set(mob.x, mob.y, mob.z);
 
@@ -225,10 +245,20 @@ export class MobSystem {
     const fullDist = Math.sqrt(dx * dx + (player.y - mob.y) ** 2 + dz * dz);
     if (fullDist < 1.5 && mob.attackTimer <= 0) {
       player._takeDamage(3);
+      player.knockback(mob.x, mob.z);
       mob.attackTimer = 1.5;
     }
 
     if (mob.hp <= 0 || mob.y < -30) this._kill(mob);
+  }
+
+  _isInSunlight(mob) {
+    const bx = Math.floor(mob.x);
+    const bz = Math.floor(mob.z);
+    for (let dy = 1; dy <= 8; dy++) {
+      if (this._world.isSolid(bx, Math.floor(mob.y + MOB_H) + dy, bz)) return false;
+    }
+    return true;
   }
 
   _collide(mob, dt) {
@@ -267,7 +297,7 @@ export class MobSystem {
   dispose() {
     for (const mob of this._mobs) this._kill(mob);
     this._mobs = [];
-    this._matBody.dispose();  this._matHead.dispose();
+    this._matSkin.dispose();  this._matShirt.dispose();  this._matPants.dispose();
     this._matEye.dispose();   this._matFlash.dispose();
     this._matHpBg.dispose();  this._matHpFg.dispose();
   }

@@ -68,6 +68,7 @@ export class Game {
 
     // State
     this._inventoryOpen = false;
+    this._dead = false;
     this._lastSave = 0;
     this._fps = 60;
     this._fpsAlpha = 0.1;
@@ -181,6 +182,21 @@ export class Game {
     this._hud.showInventory(false);
   }
 
+  _toggleInventory() {
+    this._inventoryOpen = !this._inventoryOpen;
+    this._hud.showInventory(this._inventoryOpen);
+    if (this._inventoryOpen) {
+      this._hud.updateInventoryGrid(this._inventory);
+      this._refreshCraftingUI();
+    }
+  }
+
+  _respawn() {
+    this._player.respawn();
+    this._dead = false;
+    this._doSave();
+  }
+
   // Called from HTML crafting buttons (index into full recipe list)
   craft(idx) {
     this._crafting.craftByIndex(idx, this._inventory);
@@ -261,14 +277,15 @@ export class Game {
 
     const input = this._controls.poll();
 
+    // While dead, render the scene but skip all game logic
+    if (this._dead) {
+      this._renderer.render(this._scene, this._camera);
+      return;
+    }
+
     // Inventory toggle
     if (input.inventory) {
-      this._inventoryOpen = !this._inventoryOpen;
-      this._hud.showInventory(this._inventoryOpen);
-      if (this._inventoryOpen) {
-        this._hud.updateInventoryGrid(this._inventory);
-        this._refreshCraftingUI();
-      }
+      this._toggleInventory();
     }
 
     // Flashlight toggle
@@ -290,6 +307,19 @@ export class Game {
     const prevHp = this._player.hp;
     this._player.update(dt, playerInput, this._mobs);
     if (this._player.hp < prevHp) this._hud.damageFlash();
+
+    // Death check
+    if (this._player.hp <= 0) {
+      this._dead = true;
+      this._hud.showDeathScreen(() => this._respawn());
+    }
+
+    // Block interaction (crafting table, furnace, etc.)
+    if (this._player.pendingInteract) {
+      const action = this._player.pendingInteract;
+      this._player.pendingInteract = null;
+      if (action === 'crafting') this._toggleInventory();
+    }
 
     // Update selected block label
     const t = this._player.targeted;

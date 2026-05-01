@@ -5,6 +5,7 @@ const DEFS = {
   [ITEMS.STONE_SWORD]:   { name: 'Stone Sword',   damage: 5, reach: 3.0, color: '#aaaaaa' },
   [ITEMS.IRON_SWORD]:    { name: 'Iron Sword',    damage: 6, reach: 3.5, color: '#d8e8f8' },
   [ITEMS.DIAMOND_SWORD]: { name: 'Diamond Sword', damage: 7, reach: 3.5, color: '#44ddff' },
+  [ITEMS.APPLE]:         { name: 'Apple',         edible: true, hungerRestore: 4, color: '#ff4444' },
 };
 
 export const ItemRegistry = {

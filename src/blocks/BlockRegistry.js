@@ -1,4 +1,4 @@
-import { B } from '../utils/constants.js';
+import { B, ITEMS } from '../utils/constants.js';
 
 // Texture atlas: 256×256 px, 16 px per tile → 16 cols × 16 rows
 // Texture index = row*16 + col
@@ -56,7 +56,7 @@ const DEFS = {
   [B.BEDROCK]:       { name:'Bedrock',        faces: all(T.BEDROCK),                           solid:true,  hard:-1,   tool:null,     drops:null       },
   [B.COBBLESTONE]:   { name:'Cobblestone',    faces: all(T.COBBLE),                            solid:true,  hard:2.0,  tool:'pickaxe',drops:B.COBBLESTONE},
   [B.OAK_LOG]:       { name:'Oak Log',        faces: column(T.LOG_SIDE, T.LOG_TOP),            solid:true,  hard:2.0,  tool:'axe',    drops:B.OAK_LOG  },
-  [B.OAK_LEAVES]:    { name:'Oak Leaves',     faces: all(T.LEAVES),                            solid:false, hard:0.2,  tool:null,     drops:null, transparent:true, tint:0x3a8a2a },
+  [B.OAK_LEAVES]:    { name:'Oak Leaves',     faces: all(T.LEAVES),                            solid:false, hard:0.2,  tool:null,     drops:ITEMS.APPLE, dropChance:1/6, transparent:true, tint:0x3a8a2a },
   [B.OAK_PLANKS]:    { name:'Oak Planks',     faces: all(T.PLANKS),                            solid:true,  hard:2.0,  tool:'axe',    drops:B.OAK_PLANKS},
   [B.GLASS]:         { name:'Glass',          faces: all(T.GLASS),                             solid:true,  hard:0.3,  tool:null,     drops:B.GLASS, transparent:true  },
   [B.COAL_ORE]:      { name:'Coal Ore',       faces: all(T.COAL_ORE),                          solid:true,  hard:3.0,  tool:'pickaxe',drops:B.COAL_ORE    },

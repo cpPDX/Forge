@@ -242,6 +242,27 @@
       pointer-events: none; opacity: 0; z-index: 200;
     }
 
+    /* Death screen */
+    #death-screen {
+      position: fixed; inset: 0; z-index: 300;
+      background: rgba(0,0,0,0.72);
+      display: flex; align-items: center; justify-content: center;
+    }
+    #death-screen.hidden { display: none; }
+    #death-inner { text-align: center; }
+    #death-title {
+      color: #c00; font-size: 2.4rem; margin: 0 0 1.4rem;
+      letter-spacing: 2px; text-transform: uppercase;
+      font-family: 'Courier New', monospace;
+    }
+    #respawn-btn {
+      padding: 0.8rem 2.5rem; font-size: 1.1rem; min-height: 54px;
+      background: #555; color: #fff; border: 2px solid #888;
+      cursor: pointer; font-family: 'Courier New', monospace;
+      letter-spacing: 1px;
+    }
+    #respawn-btn:hover, #respawn-btn:active { background: #777; }
+
     /* Portrait warning */
     #portrait-msg {
       display: none; position: fixed; inset: 0;
@@ -337,6 +358,14 @@
 
   <!-- Damage vignette flash -->
   <div id="dmg-flash"></div>
+
+  <!-- Death screen -->
+  <div id="death-screen" class="hidden">
+    <div id="death-inner">
+      <h2 id="death-title">You Died!</h2>
+      <button id="respawn-btn">Respawn</button>
+    </div>
+  </div>
 
   <!-- Portrait warning -->
   <div id="portrait-msg">

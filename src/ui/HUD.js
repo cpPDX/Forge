@@ -13,8 +13,9 @@ export class HUD {
     this._hunger  = document.getElementById('hunger-bar');
     this._label   = document.getElementById('block-label');
     this._debug   = document.getElementById('debug');
-    this._invEl   = document.getElementById('inventory-panel');
-    this._dmgFlash = document.getElementById('dmg-flash');
+    this._invEl      = document.getElementById('inventory-panel');
+    this._dmgFlash   = document.getElementById('dmg-flash');
+    this._deathScreen= document.getElementById('death-screen');
   }
 
   // ─── Hotbar ──────────────────────────────────────────────────────────────
@@ -31,12 +32,11 @@ export class HUD {
 
       if (slot.id !== B.AIR && slot.count > 0) {
         el.style.background = this._itemColor(slot.id);
-        // Weapon icon label
         const item = ItemRegistry.get(slot.id);
         if (item) {
           const ico = document.createElement('span');
           ico.style.cssText = 'font-size:18px;pointer-events:none;';
-          ico.textContent = '⚔';
+          ico.textContent = item.edible ? '🍎' : '⚔';
           el.appendChild(ico);
         }
         if (slot.count > 1) {
@@ -114,7 +114,7 @@ export class HUD {
         if (item) {
           const ico = document.createElement('span');
           ico.style.cssText = 'font-size:14px;pointer-events:none;';
-          ico.textContent = '⚔';
+          ico.textContent = item.edible ? '🍎' : '⚔';
           div.appendChild(ico);
         }
         if (slot.count > 1) {
@@ -135,6 +135,19 @@ export class HUD {
 
   isInventoryOpen() {
     return this._invEl && !this._invEl.classList.contains('hidden');
+  }
+
+  // ─── Death screen ─────────────────────────────────────────────────────────
+
+  showDeathScreen(onRespawn) {
+    if (!this._deathScreen) return;
+    this._deathScreen.classList.remove('hidden');
+    const btn = document.getElementById('respawn-btn');
+    if (btn) btn.onclick = () => { this.hideDeathScreen(); onRespawn(); };
+  }
+
+  hideDeathScreen() {
+    if (this._deathScreen) this._deathScreen.classList.add('hidden');
   }
 
   // ─── Helpers ─────────────────────────────────────────────────────────────

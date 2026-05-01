@@ -25,6 +25,7 @@ export const ITEMS = {
   STONE_SWORD:   101,
   IRON_SWORD:    102,
   DIAMOND_SWORD: 103,
+  APPLE:         104,
 };
 
 export const B = {

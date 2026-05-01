@@ -64,6 +64,10 @@ export class Player {
     this.hunger = 20;
     this._hungerTimer = 0;
     this._fallDmgVy  = 0;
+    this._starvTimer = 0;
+
+    // Pending block interaction (read and cleared by Game each frame)
+    this.pendingInteract = null;
 
     // Inventory reference (set by Game)
     this.inventory = null;
@@ -219,7 +223,11 @@ export class Player {
         const id = this._world.getBlock(bx, by, bz);
         const def = BlockRegistry.get(id);
         this._world.setBlock(bx, by, bz, B.AIR);
-        if (def?.drops != null && this.inventory) this.inventory.addItem(def.drops, 1);
+        if (def?.drops != null && this.inventory) {
+          if (!def.dropChance || Math.random() < def.dropChance) {
+            this.inventory.addItem(def.drops, 1);
+          }
+        }
         this.breakProgress = 0;
         this._breakTarget = null;
       }
@@ -242,7 +250,11 @@ export class Player {
         const bId  = this._world.getBlock(t[0], t[1], t[2]);
         const bDef = BlockRegistry.get(bId);
         this._world.setBlock(t[0], t[1], t[2], B.AIR);
-        if (bDef?.drops != null && this.inventory) this.inventory.addItem(bDef.drops, 1);
+        if (bDef?.drops != null && this.inventory) {
+          if (!bDef.dropChance || Math.random() < bDef.dropChance) {
+            this.inventory.addItem(bDef.drops, 1);
+          }
+        }
         this.breakProgress = 0;
         this._breakTarget = null;
       }
@@ -253,20 +265,41 @@ export class Player {
   }
 
   _handlePlace(input) {
-    if (!input.locked || !input.placeOnce || !this.targeted) return;
+    if (!input.locked || !input.placeOnce) return;
     if (!this.inventory) return;
+
+    // 1. Block interaction — right-clicking an interactive block (e.g. crafting table)
+    if (this.targeted) {
+      const [bx, by, bz] = this.targeted.pos;
+      const tDef = BlockRegistry.get(this._world.getBlock(bx, by, bz));
+      if (tDef?.interactive) {
+        this.pendingInteract = tDef.interactive;
+        return;
+      }
+    }
 
     const slot = this.inventory.hotbarSlot(this.inventory.selectedSlot);
     if (!slot || slot.id === B.AIR || slot.count <= 0) return;
-    if (!BlockRegistry.get(slot.id)) return; // non-block items can't be placed
+
+    // 2. Eating — consume edible item if hungry
+    const item = ItemRegistry.get(slot.id);
+    if (item?.edible) {
+      if (this.hunger < 20) {
+        this.hunger = Math.min(20, this.hunger + item.hungerRestore);
+        this.inventory.consumeSelected();
+      }
+      return;
+    }
+
+    // 3. Placing — standard block placement
+    if (!this.targeted) return;
+    if (!BlockRegistry.get(slot.id)) return;
 
     const [bx, by, bz] = this.targeted.pos;
     const [fx, fy, fz] = this.targeted.face;
     const px = bx + fx, py = by + fy, pz = bz + fz;
 
-    // Don't place inside player AABB
     if (this._overlapsPlayer(px, py, pz)) return;
-
     this._world.setBlock(px, py, pz, slot.id);
     this.inventory.consumeSelected();
   }
@@ -289,10 +322,25 @@ export class Player {
     if (this.hunger >= 18 && this.hp < 20) {
       this.hp = Math.min(20, this.hp + dt * 0.5);
     }
+    if (this.hunger === 0) {
+      this._starvTimer += dt;
+      if (this._starvTimer >= 4) { this._starvTimer = 0; this._takeDamage(1); }
+    } else {
+      this._starvTimer = 0;
+    }
   }
 
   _takeDamage(amount) {
     this.hp = Math.max(0, this.hp - amount);
+  }
+
+  respawn() {
+    const sp = this._world.spawnPoint();
+    this.x = sp.x; this.y = sp.y; this.z = sp.z;
+    this.vx = 0; this.vy = 0; this.vz = 0;
+    this.hp = 20; this.hunger = 20;
+    this._fallDmgVy = 0; this._starvTimer = 0;
+    this.onGround = false;
   }
 
   knockback(fromX, fromZ) {

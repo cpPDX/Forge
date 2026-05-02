@@ -150,7 +150,9 @@
     #inventory-panel {
       position: fixed; inset: 0;
       background: rgba(0,0,0,0.55);
-      display: flex; align-items: center; justify-content: center;
+      display: flex; align-items: flex-start; justify-content: center;
+      padding-top: max(4vh, 8px);
+      overflow-y: auto; -webkit-overflow-scrolling: touch;
       z-index: 50; pointer-events: all;
       cursor: pointer;
     }
@@ -162,7 +164,7 @@
       border-right-color: #555555; border-bottom-color: #555555;
       padding: 12px 12px 8px;
       width: min(380px, 94vw);
-      max-height: 88vh; overflow-y: auto;
+      max-height: min(88vh, 88dvh); overflow-y: auto;
       -webkit-overflow-scrolling: touch;
       cursor: default;
       font-family: 'Courier New', monospace;
@@ -225,7 +227,7 @@
       text-transform: uppercase; letter-spacing: 1px;
     }
     #crafting-list {
-      max-height: 160px; overflow-y: auto;
+      max-height: min(240px, 30vh); overflow-y: auto;
       -webkit-overflow-scrolling: touch;
       border: 2px solid;
       border-top-color: #373737; border-left-color: #373737;

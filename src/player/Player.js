@@ -109,8 +109,14 @@ export class Player {
     const len = Math.sqrt(mx*mx + mz*mz);
     if (len > 0) { mx /= len; mz /= len; }
 
-    this.vx = mx * speed;
-    this.vz = mz * speed;
+    // Slow down when moving through leaves
+    const lx = Math.floor(this.x), lz = Math.floor(this.z);
+    const inLeaves = this._world.getBlock(lx, Math.floor(this.y + 0.5), lz) === B.OAK_LEAVES
+                  || this._world.getBlock(lx, Math.floor(this.y + 1.2), lz) === B.OAK_LEAVES;
+    const leafMult = inLeaves ? 0.35 : 1.0;
+
+    this.vx = mx * speed * leafMult;
+    this.vz = mz * speed * leafMult;
 
     if (input.jump && this.onGround) {
       this.vy = JUMP_VEL;
@@ -147,8 +153,11 @@ export class Player {
     if (this._blockCheck(nx, ny, nz, w, h)) {
       if (this.vy < 0) {
         // Landing — convert velocity to equivalent fall distance: d = v²/(2g)
-        const fallSpeed  = -this._fallDmgVy;
-        const fallBlocks = (fallSpeed * fallSpeed) / (2 * 28);
+        const fallSpeed = -this._fallDmgVy;
+        let fallBlocks  = (fallSpeed * fallSpeed) / (2 * 28);
+        // Leaves cushion the landing by 2 blocks
+        const landId = this._world.getBlock(Math.floor(nx), Math.floor(ny), Math.floor(nz));
+        if (landId === B.OAK_LEAVES) fallBlocks = Math.max(0, fallBlocks - 2);
         if (fallBlocks > 3) this._takeDamage(Math.floor(fallBlocks - 3));
         this.onGround = true;
       }

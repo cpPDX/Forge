@@ -1,4 +1,6 @@
 import { B, CHUNK_SIZE, CHUNK_HEIGHT, SEA_LEVEL } from '../utils/constants.js';
+
+const GRAVITY_BLOCKS = new Set([B.SAND, B.GRAVEL]);
 import { makeFBM2D, makeFBM3D } from '../utils/noise.js';
 import { BlockRegistry } from '../blocks/BlockRegistry.js';
 
@@ -46,7 +48,7 @@ export class World {
     return this._ensure(cx, cz)[this._idx(lx, y, lz)];
   }
 
-  setBlock(x, y, z, id) {
+  setBlock(x, y, z, id, _skipGravity = false) {
     if (y < 0 || y >= CHUNK_HEIGHT) return;
     const cx = Math.floor(x / CHUNK_SIZE);
     const cz = Math.floor(z / CHUNK_SIZE);
@@ -59,6 +61,22 @@ export class World {
     if (lx === CHUNK_SIZE - 1) this._dirty.add(this._key(cx+1, cz));
     if (lz === 0)              this._dirty.add(this._key(cx, cz-1));
     if (lz === CHUNK_SIZE - 1) this._dirty.add(this._key(cx, cz+1));
+    // Cascade gravity blocks sitting above newly placed AIR
+    if (!_skipGravity && id === B.AIR) this._cascadeGravity(x, y + 1, z);
+  }
+
+  _cascadeGravity(x, startY, z) {
+    for (let sy = startY; sy < CHUNK_HEIGHT; sy++) {
+      const bid = this.getBlock(x, sy, z);
+      if (!GRAVITY_BLOCKS.has(bid)) break;
+      let landY = sy - 1;
+      while (landY >= 0 && this.getBlock(x, landY, z) === B.AIR) landY--;
+      landY++; // first open slot above solid
+      if (landY < sy) {
+        this.setBlock(x, sy,    z, B.AIR, true);
+        this.setBlock(x, landY, z, bid,   true);
+      }
+    }
   }
 
   isSolid(x, y, z) { return BlockRegistry.isSolid(this.getBlock(x, y, z)); }

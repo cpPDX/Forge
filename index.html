@@ -150,9 +150,7 @@
     #inventory-panel {
       position: fixed; inset: 0;
       background: rgba(0,0,0,0.55);
-      display: flex; align-items: flex-start; justify-content: center;
-      padding-top: max(4vh, 8px);
-      overflow-y: auto; -webkit-overflow-scrolling: touch;
+      display: flex; align-items: center; justify-content: center;
       z-index: 50; pointer-events: all;
       cursor: pointer;
     }
@@ -162,18 +160,18 @@
       border: 4px solid;
       border-top-color: #ffffff; border-left-color: #ffffff;
       border-right-color: #555555; border-bottom-color: #555555;
-      padding: 12px 12px 8px;
-      width: min(380px, 94vw);
-      max-height: min(88vh, 88dvh); overflow-y: auto;
-      -webkit-overflow-scrolling: touch;
+      padding: 10px 10px 8px;
+      width: min(700px, 97vw);
+      max-height: min(92vh, 92dvh);
+      display: flex; flex-direction: column;
       cursor: default;
       font-family: 'Courier New', monospace;
     }
 
-    /* Section title — white text on dark strip, Minecraft style */
+    /* Header */
     #inv-header {
       display: flex; justify-content: space-between; align-items: center;
-      margin-bottom: 10px;
+      margin-bottom: 8px; flex-shrink: 0;
     }
     #inv-header span {
       font-size: 13px; color: #333333; font-family: 'Courier New', monospace;
@@ -192,13 +190,23 @@
     }
     #inv-x-btn:active { filter: brightness(0.85); }
 
+    /* Two-column body: inventory left, crafting right */
+    #inv-body {
+      display: flex; flex-direction: row; gap: 10px;
+      align-items: stretch; flex: 1; min-height: 0;
+    }
+    #inv-slots {
+      flex: 3; min-width: 0;
+      display: flex; flex-direction: column; gap: 4px;
+    }
+
     /* Inventory grid — tight packing like Minecraft */
     .inv-grid {
       display: grid; grid-template-columns: repeat(9, 1fr);
-      gap: 2px; margin-bottom: 4px;
+      gap: 2px;
     }
     .inv-section-label {
-      font-size: 11px; color: #333; margin: 6px 0 4px;
+      font-size: 10px; color: #333; margin: 2px 0;
       font-family: 'Courier New', monospace; font-weight: bold;
     }
     .inv-slot {
@@ -212,22 +220,21 @@
       font-family: 'Courier New', monospace;
     }
 
-    /* Crafting section */
+    /* Crafting section — right column */
     #craft-section {
-      margin-top: 10px;
-      border-top: 2px solid;
-      border-top-color: #555;
-      border-top-width: 1px;
-      padding-top: 8px;
-      box-shadow: inset 0 1px 0 #fff;
+      flex: 2; min-width: 0;
+      display: flex; flex-direction: column;
+      border-left: 1px solid #555;
+      box-shadow: inset 1px 0 0 #fff;
+      padding-left: 10px;
     }
     #craft-section h3 {
-      font-size: 11px; color: #333; margin-bottom: 6px;
+      font-size: 11px; color: #333; margin-bottom: 6px; flex-shrink: 0;
       font-family: 'Courier New', monospace; font-weight: bold;
       text-transform: uppercase; letter-spacing: 1px;
     }
     #crafting-list {
-      max-height: min(240px, 30vh); overflow-y: auto;
+      flex: 1; overflow-y: auto; min-height: 0;
       -webkit-overflow-scrolling: touch;
       border: 2px solid;
       border-top-color: #373737; border-left-color: #373737;
@@ -247,7 +254,8 @@
 
     /* Bottom close button */
     #inv-close-btn {
-      display: block; width: 100%; margin-top: 10px; padding: 10px 6px;
+      display: block; width: 100%; margin-top: 8px; padding: 10px 6px;
+      flex-shrink: 0;
       background: #8b8b8b;
       border: 3px solid;
       border-top-color: #ffffff; border-left-color: #ffffff;
@@ -394,13 +402,17 @@
         <span>INVENTORY</span>
         <button id="inv-x-btn">✕</button>
       </div>
-      <div class="inv-grid" id="inv-main-grid"></div>
-      <div class="inv-grid" id="inv-hotbar-grid"></div>
-      <div id="craft-section">
-        <h3>CRAFTING</h3>
-        <div id="crafting-list"></div>
+      <div id="inv-body">
+        <div id="inv-slots">
+          <div class="inv-grid" id="inv-main-grid"></div>
+          <div class="inv-section-label">— Hotbar —</div>
+          <div class="inv-grid" id="inv-hotbar-grid"></div>
+        </div>
+        <div id="craft-section">
+          <h3>CRAFTING</h3>
+          <div id="crafting-list"></div>
+        </div>
       </div>
-      <!-- Red close button at bottom reachable by thumb -->
       <button id="inv-close-btn">✕  CLOSE</button>
     </div>
   </div>

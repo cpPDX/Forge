@@ -161,7 +161,7 @@
       border-top-color: #ffffff; border-left-color: #ffffff;
       border-right-color: #555555; border-bottom-color: #555555;
       padding: 12px 12px 8px;
-      min-width: 340px; max-width: 92vw;
+      width: min(380px, 94vw);
       max-height: 88vh; overflow-y: auto;
       -webkit-overflow-scrolling: touch;
       cursor: default;
@@ -192,7 +192,7 @@
 
     /* Inventory grid — tight packing like Minecraft */
     .inv-grid {
-      display: grid; grid-template-columns: repeat(9, 36px);
+      display: grid; grid-template-columns: repeat(9, 1fr);
       gap: 2px; margin-bottom: 4px;
     }
     .inv-section-label {
@@ -200,7 +200,7 @@
       font-family: 'Courier New', monospace; font-weight: bold;
     }
     .inv-slot {
-      width: 36px; height: 36px;
+      aspect-ratio: 1;
       background: #8b8b8b;
       border: 2px solid;
       border-top-color: #373737; border-left-color: #373737;

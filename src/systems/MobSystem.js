@@ -53,6 +53,45 @@ export class MobSystem {
 
   // ─── Mesh factories ────────────────────────────────────────────────────────
 
+  _makeFaceTexture(drawFn) {
+    const c = document.createElement('canvas');
+    c.width = c.height = 16;
+    drawFn(c.getContext('2d'));
+    const t = new THREE.CanvasTexture(c);
+    t.magFilter = THREE.NearestFilter;
+    t.minFilter = THREE.NearestFilter;
+    return new THREE.MeshLambertMaterial({ map: t });
+  }
+
+  _drawZombieFace(ctx) {
+    ctx.fillStyle = '#7aaa6a'; ctx.fillRect(0, 0, 16, 16);
+    ctx.fillStyle = '#5a9a5a'; ctx.fillRect(0, 0, 16, 1);
+    ctx.fillStyle = '#330000'; ctx.fillRect(2, 4, 4, 3); ctx.fillRect(10, 4, 4, 3);
+    ctx.fillStyle = '#cc0000'; ctx.fillRect(3, 5, 2, 2); ctx.fillRect(11, 5, 2, 2);
+    ctx.fillStyle = '#1a1a1a'; ctx.fillRect(4, 10, 8, 2);
+    ctx.fillStyle = '#330000'; ctx.fillRect(5, 10, 2, 1); ctx.fillRect(9, 10, 2, 1);
+  }
+
+  _drawCreeperFace(ctx) {
+    ctx.fillStyle = '#44aa44'; ctx.fillRect(0, 0, 16, 16);
+    ctx.fillStyle = '#111111';
+    ctx.fillRect(2, 3, 4, 4); ctx.fillRect(10, 3, 4, 4);
+    ctx.fillRect(6, 7, 4, 4);
+    ctx.fillRect(4, 11, 2, 2); ctx.fillRect(6,  9, 2, 2);
+    ctx.fillRect(8, 11, 2, 2); ctx.fillRect(10, 9, 2, 2);
+    ctx.fillRect(4, 13, 8, 2);
+  }
+
+  _drawSkeletonFace(ctx) {
+    ctx.fillStyle = '#ddddbb'; ctx.fillRect(0, 0, 16, 16);
+    ctx.fillStyle = '#111111'; ctx.fillRect(2, 4, 4, 4); ctx.fillRect(10, 4, 4, 4);
+    ctx.fillStyle = '#333322'; ctx.fillRect(7, 7, 2, 3);
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(3, 12, 2, 2); ctx.fillRect(6, 12, 2, 2);
+    ctx.fillRect(9, 12, 2, 2); ctx.fillRect(12, 12, 2, 2);
+    ctx.fillStyle = '#eeeecc'; ctx.fillRect(0, 0, 1, 16); ctx.fillRect(0, 0, 16, 1);
+  }
+
   _makeMesh() {
     const g = new THREE.Group();
     const part = (geo, mat, x, y, z, rx = 0) => {
@@ -67,7 +106,11 @@ export class MobSystem {
     part(legGeo, this._matPants, -0.13, 0.375, 0);
     part(legGeo, this._matPants,  0.13, 0.375, 0);
     part(new THREE.BoxGeometry(0.5, 0.9, 0.3), this._matShirt, 0, 1.20, 0);
-    part(new THREE.BoxGeometry(0.5, 0.5, 0.5), this._matSkin,  0, 1.90, 0);
+    // Head with pixel-art face texture on front (+Z) face
+    const zFaceMat = this._makeFaceTexture(ctx => this._drawZombieFace(ctx));
+    const zHeadMats = [this._matSkin, this._matSkin, this._matSkin, this._matSkin, zFaceMat, this._matSkin];
+    const zHead = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.5, 0.5), zHeadMats);
+    zHead.position.set(0, 1.90, 0); zHead._origMat = zHeadMats; g.add(zHead);
     const eyeGeo = new THREE.BoxGeometry(0.1, 0.08, 0.06);
     part(eyeGeo, this._matEye, -0.12, 1.92, 0.26);
     part(eyeGeo, this._matEye,  0.12, 1.92, 0.26);
@@ -95,16 +138,11 @@ export class MobSystem {
     part(legGeo, C,  0.15, 0.225,  0.13);
     // Body (squat, wide)
     part(new THREE.BoxGeometry(0.5, 0.75, 0.5), C, 0, 0.825, 0);
-    // Head (large and square)
-    part(new THREE.BoxGeometry(0.55, 0.55, 0.55), C, 0, 1.475, 0);
-    // Eye sockets
-    const eyeGeo = new THREE.BoxGeometry(0.12, 0.12, 0.03);
-    part(eyeGeo, D, -0.13, 1.50, 0.29);
-    part(eyeGeo, D,  0.13, 1.50, 0.29);
-    // Mouth (zigzag approximation)
-    part(new THREE.BoxGeometry(0.22, 0.09, 0.03), D,  0.04, 1.36, 0.29);
-    part(new THREE.BoxGeometry(0.09, 0.09, 0.03), D, -0.09, 1.27, 0.29);
-    part(new THREE.BoxGeometry(0.09, 0.09, 0.03), D,  0.09, 1.27, 0.29);
+    // Head with iconic pixel-art creeper face texture on front (+Z) face
+    const cFaceMat = this._makeFaceTexture(ctx => this._drawCreeperFace(ctx));
+    const cHeadMats = [C, C, C, C, cFaceMat, C];
+    const cHead = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.55, 0.55), cHeadMats);
+    cHead.position.set(0, 1.475, 0); cHead._origMat = cHeadMats; g.add(cHead);
     return g;
   }
 
@@ -124,12 +162,11 @@ export class MobSystem {
     part(legGeo, B_,  0.10, 0.375, 0);
     // Narrow ribcage body
     part(new THREE.BoxGeometry(0.38, 0.85, 0.2), B_, 0, 1.175, 0);
-    // Head
-    part(new THREE.BoxGeometry(0.45, 0.45, 0.45), B_, 0, 1.825, 0);
-    // Hollow eye sockets
-    const eyeGeo = new THREE.BoxGeometry(0.1, 0.1, 0.03);
-    part(eyeGeo, D, -0.11, 1.845, 0.24);
-    part(eyeGeo, D,  0.11, 1.845, 0.24);
+    // Head with pixel-art skeleton face texture on front (+Z) face
+    const sFaceMat = this._makeFaceTexture(ctx => this._drawSkeletonFace(ctx));
+    const sHeadMats = [B_, B_, B_, B_, sFaceMat, B_];
+    const sHead = new THREE.Mesh(new THREE.BoxGeometry(0.45, 0.45, 0.45), sHeadMats);
+    sHead.position.set(0, 1.825, 0); sHead._origMat = sHeadMats; g.add(sHead);
     // Arms (one angled forward to hold bow)
     const armGeo = new THREE.BoxGeometry(0.16, 0.7, 0.16);
     const bowArm = part(armGeo, B_, -0.31, 1.2, 0);
@@ -273,9 +310,10 @@ export class MobSystem {
     this._applySunburn(mob, dt, isNight);
     this._updateHpBar(mob);
 
+    // Zombie: pure melee, fist attacks only, no ranged capability
     mob.attackTimer -= dt;
     const fullDist = Math.sqrt(dx*dx + (player.y - mob.y)**2 + dz*dz);
-    if (fullDist < 1.5 && mob.attackTimer <= 0) {
+    if (fullDist < 1.2 && mob.attackTimer <= 0) {
       player._takeDamage(3);
       player.knockback(mob.x, mob.z);
       mob.attackTimer = 1.5;

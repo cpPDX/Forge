@@ -54,12 +54,18 @@ export function buildTextureAtlas() {
     const img = ctx.getImageData(ox, oy, TILE, TILE);
     const d = img.data;
     const [sr,sg,sb] = hexToRgb(spotColor);
-    const spots = [[3,3],[3,10],[10,4],[11,11],[7,7]];
+    // larger vein spots (4×4 core) with a highlight pixel on each
+    const spots = [[3,3],[3,10],[10,4],[11,11],[7,7],[13,7],[1,7]];
     for (const [sx,sy] of spots) {
-      for (let dy=-1; dy<=1; dy++) for (let dx=-1; dx<=1; dx++) {
-        const px = (sy+dy)*TILE+(sx+dx);
-        if (px<0||px>=TILE*TILE) continue;
-        d[px*4]=sr; d[px*4+1]=sg; d[px*4+2]=sb; d[px*4+3]=255;
+      for (let dy=-1; dy<=2; dy++) for (let dx=-1; dx<=2; dx++) {
+        const p = (sy+dy)*TILE+(sx+dx);
+        if (p<0||p>=TILE*TILE) continue;
+        d[p*4]=sr; d[p*4+1]=sg; d[p*4+2]=sb; d[p*4+3]=255;
+      }
+      // highlight pixel
+      const hp = sy*TILE+sx;
+      if (hp>=0&&hp<TILE*TILE) {
+        d[hp*4]=Math.min(255,sr+50); d[hp*4+1]=Math.min(255,sg+50); d[hp*4+2]=Math.min(255,sb+50); d[hp*4+3]=255;
       }
     }
     ctx.putImageData(img, ox, oy);
@@ -69,9 +75,14 @@ export function buildTextureAtlas() {
 
   // 0 GRASS_TOP
   fillTile(0, (d, rng) => {
-    for (let i = 0; i < TILE*TILE; i++) {
-      const g = vary(120, 20, rng);
-      d[i*4]=30+g*0.2; d[i*4+1]=g; d[i*4+2]=20; d[i*4+3]=255;
+    for (let y=0;y<TILE;y++) for (let x=0;x<TILE;x++) {
+      const i = y*TILE+x;
+      const g = vary(118, 22, rng);
+      // lighter green highlights scattered across surface
+      const hi = rng() < 0.12 ? 20 : 0;
+      // subtle darker border ring
+      const edge = (x===0||x===15||y===0||y===15) ? -14 : 0;
+      d[i*4]=28+g*0.18+edge; d[i*4+1]=g+hi+edge; d[i*4+2]=18; d[i*4+3]=255;
     }
   });
 
@@ -97,8 +108,17 @@ export function buildTextureAtlas() {
     }
   });
 
-  // 3 STONE
-  solid(3, 0x7a7a7a, 16);
+  // 3 STONE — gray base with diagonal crack lines
+  fillTile(3, (d, rng) => {
+    const cracks = new Set();
+    // three diagonal crack paths
+    for (let i=2;i<13;i++) { cracks.add(i*TILE+i); cracks.add(i*TILE+(15-i)); cracks.add((i+3)*TILE+(i-2<0?0:i-2)); }
+    for (let i=0;i<TILE*TILE;i++) {
+      const v = vary(122, 16, rng);
+      const c = cracks.has(i) ? -22 : 0;
+      d[i*4]=v+c; d[i*4+1]=v+c; d[i*4+2]=v+c; d[i*4+3]=255;
+    }
+  });
 
   // 4 SAND
   solid(4, 0xd4c07a, 14);
@@ -161,15 +181,22 @@ export function buildTextureAtlas() {
     }
   });
 
-  // 11 PLANKS
+  // 11 PLANKS — horizontal plank rows + vertical groove dividers + wood grain
   fillTile(11, (d, rng) => {
     for (let y=0;y<TILE;y++) for (let x=0;x<TILE;x++) {
       const i = y*TILE+x;
-      const plank = Math.floor(y/4)%2;
-      const base = plank?0xc08040:0xb07030;
+      const row = Math.floor(y/4);
+      const base = (row%2)?0xc08040:0xb07030;
       const [R,G,Bl] = hexToRgb(base);
-      const n=(rng()-0.5)*14; const line = (y%4===0)?-30:0;
-      d[i*4]=R+n+line; d[i*4+1]=G+n+line; d[i*4+2]=Bl+n+line; d[i*4+3]=255;
+      // grain: every 3rd row slightly darker
+      const grain = (y%3===2) ? -8 : 0;
+      // horizontal plank separator
+      const hline = (y%4===0)?-28:0;
+      // vertical groove dividers (offset per row to stagger planks)
+      const grooveX = (row%2===0) ? 8 : 4;
+      const vline = (x===grooveX)?-22:0;
+      const n=(rng()-0.5)*12;
+      d[i*4]=R+n+hline+vline+grain; d[i*4+1]=G+n+hline+vline+grain; d[i*4+2]=Bl+n+hline+vline+grain; d[i*4+3]=255;
     }
   });
 

@@ -1,6 +1,6 @@
-import { BlockRegistry } from '../blocks/BlockRegistry.js';
-import { ItemRegistry }  from '../blocks/ItemRegistry.js';
-import { B, ITEMS } from '../utils/constants.js';
+import { ItemRegistry } from '../blocks/ItemRegistry.js';
+import { B } from '../utils/constants.js';
+import { drawItemSprite } from './ItemSprites.js';
 
 const HOTBAR_SIZE = 9;
 
@@ -9,13 +9,33 @@ export class HUD {
     this._hotbarSlots = Array.from({ length: HOTBAR_SIZE }, (_, i) =>
       document.getElementById(`slot-${i}`)
     );
-    this._health  = document.getElementById('health-bar');
-    this._hunger  = document.getElementById('hunger-bar');
-    this._label   = document.getElementById('block-label');
-    this._debug   = document.getElementById('debug');
+    this._heartsRow = document.getElementById('hearts-row');
+    this._hungerRow = document.getElementById('hunger-row');
+    this._label      = document.getElementById('block-label');
+    this._debug      = document.getElementById('debug');
     this._invEl      = document.getElementById('inventory-panel');
     this._dmgFlash   = document.getElementById('dmg-flash');
     this._deathScreen= document.getElementById('death-screen');
+    this._heartCanvases = [];
+    this._hungerCanvases = [];
+    this._buildIconRows();
+  }
+
+  // ─── Icon rows (hearts / hunger) ─────────────────────────────────────────
+
+  _buildIconRows() {
+    for (let i = 0; i < 10; i++) {
+      this._heartCanvases.push(this._makeIcon(this._heartsRow));
+      this._hungerCanvases.push(this._makeIcon(this._hungerRow));
+    }
+  }
+
+  _makeIcon(parent) {
+    const c = document.createElement('canvas');
+    c.width = c.height = 9;
+    c.style.cssText = 'width:9px;height:9px;image-rendering:pixelated;display:block;';
+    if (parent) parent.appendChild(c);
+    return c;
   }
 
   // ─── Hotbar ──────────────────────────────────────────────────────────────
@@ -29,24 +49,22 @@ export class HUD {
       if (!el) return;
       el.classList.toggle('selected', i === sel);
       el.innerHTML = '';
+      el.style.background = '';
 
       if (slot.id !== B.AIR && slot.count > 0) {
-        el.style.background = this._itemColor(slot.id);
-        const item = ItemRegistry.get(slot.id);
-        if (item) {
-          const ico = document.createElement('span');
-          ico.style.cssText = 'font-size:18px;pointer-events:none;';
-          ico.textContent = item.edible ? '🍎' : '⚔';
-          el.appendChild(ico);
-        }
+        const sz = el.clientWidth || 44;
+        const c = document.createElement('canvas');
+        c.width = c.height = sz;
+        c.style.cssText = `position:absolute;inset:0;width:100%;height:100%;image-rendering:pixelated;`;
+        drawItemSprite(c.getContext('2d'), slot.id, sz);
+        el.appendChild(c);
+
         if (slot.count > 1) {
           const cnt = document.createElement('span');
           cnt.className = 'slot-count';
           cnt.textContent = slot.count;
           el.appendChild(cnt);
         }
-      } else {
-        el.style.background = '';
       }
     });
   }
@@ -54,8 +72,57 @@ export class HUD {
   // ─── Health / Hunger ─────────────────────────────────────────────────────
 
   updateBars(hp, hunger) {
-    if (this._health) this._health.style.width = `${(hp / 20) * 100}%`;
-    if (this._hunger) this._hunger.style.width = `${(hunger / 20) * 100}%`;
+    this._drawHearts(hp);
+    this._drawHunger(hunger);
+  }
+
+  _drawHearts(hp) {
+    for (let i = 0; i < 10; i++) {
+      const c = this._heartCanvases[i];
+      if (!c) continue;
+      const filled = hp - i * 2;
+      this._drawHeart(c, filled >= 2 ? 'full' : filled >= 1 ? 'half' : 'empty');
+    }
+  }
+
+  _drawHunger(hunger) {
+    for (let i = 0; i < 10; i++) {
+      const c = this._hungerCanvases[i];
+      if (!c) continue;
+      const filled = hunger - i * 2;
+      this._drawDrumstick(c, filled >= 2 ? 'full' : filled >= 1 ? 'half' : 'empty');
+    }
+  }
+
+  _drawHeart(canvas, state) {
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, 9, 9);
+    // background outline (dark)
+    const outline = [[1,0],[2,0],[4,0],[5,0],[0,1],[1,1],[2,1],[3,1],[4,1],[5,1],[6,1],[0,2],[1,2],[2,2],[3,2],[4,2],[5,2],[6,2],[0,3],[1,3],[2,3],[3,3],[4,3],[5,3],[6,3],[1,4],[2,4],[3,4],[4,4],[5,4],[2,5],[3,5],[4,5],[3,6]];
+    const px = (x,y,col) => { ctx.fillStyle=col; ctx.fillRect(x,y,1,1); };
+    for (const [x,y] of outline) px(x,y,'#550000');
+    if (state === 'empty') return;
+    // fill
+    const fill = [[1,1],[2,1],[4,1],[5,1],[0,2],[1,2],[2,2],[3,2],[4,2],[5,2],[6,2],[0,3],[1,3],[2,3],[3,3],[4,3],[5,3],[6,3],[1,4],[2,4],[3,4],[4,4],[5,4],[2,5],[3,5],[4,5],[3,6]];
+    const fillCol = '#FF0000';
+    const halfCol = '#777';
+    for (const [x,y] of fill) px(x, y, (state === 'half' && x >= 3) ? halfCol : fillCol);
+    // shine
+    px(1,1,'#FF6666'); px(2,1,'#FF6666');
+  }
+
+  _drawDrumstick(canvas, state) {
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, 9, 9);
+    const px = (x,y,col) => { ctx.fillStyle=col; ctx.fillRect(x,y,1,1); };
+    const outline = [[2,0],[3,0],[1,1],[2,1],[3,1],[4,1],[0,2],[1,2],[2,2],[3,2],[4,2],[5,2],[0,3],[1,3],[2,3],[3,3],[4,3],[5,3],[1,4],[2,4],[3,4],[4,4],[5,4],[2,5],[3,5],[4,5],[5,5],[3,6],[4,6],[5,6],[4,7],[5,7],[5,8]];
+    for (const [x,y] of outline) px(x,y,'#552200');
+    if (state === 'empty') return;
+    const fill = [[2,0],[3,0],[1,1],[2,1],[3,1],[4,1],[0,2],[1,2],[2,2],[3,2],[4,2],[5,2],[0,3],[1,3],[2,3],[3,3],[4,3],[5,3],[1,4],[2,4],[3,4],[4,4],[5,4],[2,5],[3,5],[4,5],[5,5],[3,6],[4,6],[5,6],[4,7],[5,7],[5,8]];
+    const full = '#cc7722';
+    const half = '#777';
+    for (const [x,y] of fill) px(x, y, (state === 'half' && x >= 3) ? half : full);
+    px(1,2,'#ee9944'); px(1,3,'#ee9944');
   }
 
   // ─── Block / item label ───────────────────────────────────────────────────
@@ -91,7 +158,7 @@ export class HUD {
       `Chunk: ${Math.floor(x/16)}, ${Math.floor(z/16)}<br>` +
       `Chunks: ${chunkCount} &nbsp; Mobs: ${mobCount}<br>` +
       `Time: ${time} &nbsp; FPS: ${fps}<br>` +
-      (weapon ? `Weapon: ${weapon.name} (${weapon.damage} dmg)` : 'Weapon: fist (1 dmg)');
+      (weapon ? `${weapon.name} (${weapon.damage ?? 1} dmg)` : 'Fist (1 dmg)');
   }
 
   // ─── Inventory overlay ────────────────────────────────────────────────────
@@ -109,14 +176,11 @@ export class HUD {
       const div = document.createElement('div');
       div.className = 'inv-slot';
       if (slot.id !== B.AIR && slot.count > 0) {
-        div.style.background = this._itemColor(slot.id);
-        const item = ItemRegistry.get(slot.id);
-        if (item) {
-          const ico = document.createElement('span');
-          ico.style.cssText = 'font-size:14px;pointer-events:none;';
-          ico.textContent = item.edible ? '🍎' : '⚔';
-          div.appendChild(ico);
-        }
+        const c = document.createElement('canvas');
+        c.width = c.height = 32;
+        c.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;image-rendering:pixelated;';
+        drawItemSprite(c.getContext('2d'), slot.id, 32);
+        div.appendChild(c);
         if (slot.count > 1) {
           const cnt = document.createElement('span');
           cnt.className = 'slot-count';
@@ -148,26 +212,5 @@ export class HUD {
 
   hideDeathScreen() {
     if (this._deathScreen) this._deathScreen.classList.add('hidden');
-  }
-
-  // ─── Helpers ─────────────────────────────────────────────────────────────
-
-  _itemColor(id) {
-    const item = ItemRegistry.get(id);
-    if (item) return item.color;
-    const colors = {
-      [B.GRASS]: '#3a8a2a', [B.DIRT]: '#8b5e2e', [B.STONE]: '#7a7a7a',
-      [B.SAND]: '#d4c07a',  [B.COBBLESTONE]: '#888', [B.OAK_LOG]: '#7a4a20',
-      [B.OAK_PLANKS]: '#c08040', [B.OAK_LEAVES]: '#2a6a1a', [B.GLASS]: '#aaddff',
-      [B.COAL_ORE]: '#555', [B.IRON_ORE]: '#c8a07a', [B.GOLD_ORE]: '#ffd700',
-      [B.DIAMOND_ORE]: '#44ddff', [B.SANDSTONE]: '#d4b860', [B.WATER]: '#2255cc',
-      [B.LAVA]: '#ff4400',  [B.GLOWSTONE]: '#ffe040', [B.NETHERRACK]: '#6a1a1a',
-      [B.ICE]: '#aaddff',   [B.SNOW]: '#eeeeff', [B.STONE_BRICK]: '#888',
-      [B.CRAFTING_TABLE]: '#7a4020', [B.FURNACE]: '#606060',
-      [B.IRON_BLOCK]: '#d0d0d0', [B.GOLD_BLOCK]: '#ffd700', [B.DIAMOND_BLOCK]: '#44ddff',
-      [B.CLAY]: '#9aacbc',  [B.SNOW_BLOCK]: '#eeeeff', [B.GRAVEL]: '#888878',
-      [B.BEDROCK]: '#202020',
-    };
-    return colors[id] ?? '#555';
   }
 }

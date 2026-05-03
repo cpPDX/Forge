@@ -254,7 +254,12 @@ export class Player {
       const hard = BlockRegistry.hardness(id);
       if (hard < 0) return; // unbreakable
 
-      this.breakProgress += dt / (hard + 0.3);
+      const heldSlot = this.inventory?.hotbarSlot(this.inventory.selectedSlot);
+      const heldTool = heldSlot ? ItemRegistry.get(heldSlot.id) : null;
+      const blockDef = BlockRegistry.get(id);
+      const toolSpeed = (heldTool?.tool && blockDef?.tool && heldTool.tool === blockDef.tool)
+        ? (heldTool.speed ?? 2.0) : 1.0;
+      this.breakProgress += dt * toolSpeed / (hard + 0.3);
       if (this.breakProgress >= 1) {
         const bId  = this._world.getBlock(t[0], t[1], t[2]);
         const bDef = BlockRegistry.get(bId);

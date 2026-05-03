@@ -21,11 +21,16 @@ export const DAY_MS = 12 * 60 * 1000;
 // Block IDs — never reorder
 // Non-block item IDs (>= 100, never placed as blocks)
 export const ITEMS = {
-  WOODEN_SWORD:  100,
-  STONE_SWORD:   101,
-  IRON_SWORD:    102,
-  DIAMOND_SWORD: 103,
-  APPLE:         104,
+  WOODEN_SWORD:    100,
+  STONE_SWORD:     101,
+  IRON_SWORD:      102,
+  DIAMOND_SWORD:   103,
+  APPLE:           104,
+  STICK:           105,
+  WOODEN_PICKAXE:  106,
+  STONE_PICKAXE:   107,
+  IRON_PICKAXE:    108,
+  DIAMOND_PICKAXE: 109,
 };
 
 export const B = {

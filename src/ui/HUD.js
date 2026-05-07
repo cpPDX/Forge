@@ -197,6 +197,61 @@ export class HUD {
     inventory.hotbarSlots().forEach(s => hbar.appendChild(makeSlot(s)));
   }
 
+  updateCraftGrid(cells) {
+    for (let i = 0; i < 4; i++) {
+      const el = document.querySelector(`.craft-slot[data-craft="${i}"]`);
+      if (!el) continue;
+      el.innerHTML = '';
+      const { id, count } = cells[i] ?? { id: B.AIR, count: 0 };
+      if (id !== B.AIR && count > 0) {
+        const c = document.createElement('canvas');
+        c.width = c.height = 32;
+        c.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;image-rendering:pixelated;';
+        drawItemSprite(c.getContext('2d'), id, 32);
+        el.appendChild(c);
+        if (count > 1) {
+          const cnt = document.createElement('span');
+          cnt.className = 'slot-count';
+          cnt.textContent = count;
+          el.appendChild(cnt);
+        }
+      }
+    }
+  }
+
+  updateCraftOutput(result) {
+    const el = document.getElementById('craft-output');
+    if (!el) return;
+    el.innerHTML = '';
+    if (result) {
+      el.classList.add('has-result');
+      const c = document.createElement('canvas');
+      c.width = c.height = 32;
+      c.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;image-rendering:pixelated;';
+      drawItemSprite(c.getContext('2d'), result.id, 32);
+      el.appendChild(c);
+      if (result.count > 1) {
+        const cnt = document.createElement('span');
+        cnt.className = 'slot-count';
+        cnt.textContent = result.count;
+        el.appendChild(cnt);
+      }
+    } else {
+      el.classList.remove('has-result');
+    }
+  }
+
+  setCursorItem(item) {
+    const el = document.getElementById('cursor-item-hud');
+    if (!el) return;
+    if (item) {
+      el.style.display = 'block';
+      el.textContent = `Holding: ${item.name ?? item.id} ×${item.count}`;
+    } else {
+      el.style.display = 'none';
+    }
+  }
+
   isInventoryOpen() {
     return this._invEl && !this._invEl.classList.contains('hidden');
   }

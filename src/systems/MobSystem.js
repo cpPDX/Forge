@@ -371,6 +371,7 @@ export class MobSystem {
     if (mob.hp <= 0 || mob.y < -30) this._kill(mob);
   }
 
+  // Skeleton: ranged-only combat — bow and arrows, backs away from close range
   _updateSkeleton(mob, dt, player, isNight) {
     const dx = player.x - mob.x, dz = player.z - mob.z;
     const distH = Math.sqrt(dx*dx + dz*dz);

@@ -9,7 +9,7 @@
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { background: #000; overflow: hidden; touch-action: none; }
-    canvas { display: block; position: fixed; inset: 0; width: 100% !important; height: 100% !important; }
+    #game-canvas { display: block; position: fixed; inset: 0; width: 100% !important; height: 100% !important; }
 
     /* HUD — z-index:15 puts it above #touch-ui (z-index:10) so #hotbar
        (pointer-events:all) wins over joy-zone for slot taps, while
@@ -157,18 +157,24 @@
       border-top-color: #ffffff; border-left-color: #ffffff;
       border-right-color: #555555; border-bottom-color: #555555;
       padding: 10px 10px 8px;
-      width: min(700px, 97vw);
+      /* 9×36px cols + 8×2px gaps + 2×10px padding + 2×4px border = 384px; clamp to vw */
+      width: min(384px, 97vw);
       max-height: min(92vh, 92dvh);
       display: flex; flex-direction: column;
-      overflow-y: auto;
+      overflow-y: auto; -webkit-overflow-scrolling: touch;
       cursor: default;
       font-family: 'Courier New', monospace;
     }
 
-    /* Header */
+    /* Header — sticky so X button is always visible even when panel scrolls */
     #inv-header {
       display: flex; justify-content: space-between; align-items: center;
       margin-bottom: 8px; flex-shrink: 0;
+      position: sticky; top: 0; z-index: 2;
+      background: #c6c6c6;
+      padding-bottom: 4px;
+      border-bottom: 1px solid #888;
+      margin-left: -10px; margin-right: -10px; padding-left: 10px; padding-right: 10px;
     }
     #inv-header span {
       font-size: 13px; color: #333333; font-family: 'Courier New', monospace;
@@ -198,6 +204,7 @@
     }
     #player-preview {
       width: 64px; height: 96px;
+      display: block; position: relative; /* override any global canvas rules */
       image-rendering: pixelated;
       background: #6b6b6b;
       border: 2px solid;
@@ -217,20 +224,20 @@
     #craft-arrow {
       font-size: 18px; color: #555; font-weight: bold; flex-shrink: 0;
     }
-    .armor-slot { width: 32px; height: 32px; flex-shrink: 0; }
+    .armor-slot { flex-shrink: 0; cursor: default; }
     .armor-slot::after {
       content: attr(data-icon);
       font-size: 16px; position: absolute; top: 50%; left: 50%;
       transform: translate(-50%,-50%);
       pointer-events: none;
     }
-    .craft-slot { width: 32px; height: 32px; cursor: pointer; flex-shrink: 0; }
-    #craft-output { width: 32px; height: 32px; flex-shrink: 0; cursor: pointer; }
+    .craft-slot  { flex-shrink: 0; }
+    #craft-output { flex-shrink: 0; cursor: pointer; }
     #craft-output.has-result { box-shadow: inset 0 0 0 2px #44ff44; }
 
-    /* Inventory grid — tight packing like Minecraft */
+    /* Inventory grid — fixed 36px slots regardless of panel width */
     .inv-grid {
-      display: grid; grid-template-columns: repeat(9, 1fr);
+      display: grid; grid-template-columns: repeat(9, 36px);
       gap: 2px;
     }
     .inv-section-label {
@@ -238,7 +245,7 @@
       font-family: 'Courier New', monospace; font-weight: bold;
     }
     .inv-slot {
-      aspect-ratio: 1;
+      width: 36px; height: 36px;
       background: #8b8b8b;
       border: 2px solid;
       border-top-color: #373737; border-left-color: #373737;
@@ -247,7 +254,12 @@
       display: flex; align-items: center; justify-content: center;
       font-family: 'Courier New', monospace;
       touch-action: manipulation; cursor: pointer;
+      overflow: hidden;
     }
+    /* Armor and craft slots stay at their explicit sizes */
+    .armor-slot { width: 32px !important; height: 32px !important; }
+    .craft-slot  { width: 32px !important; height: 32px !important; }
+    #craft-output { width: 32px !important; height: 32px !important; }
     .inv-slot.cursor-active { box-shadow: inset 0 0 0 2px #ffff55; }
 
     /* Main + hotbar grids */

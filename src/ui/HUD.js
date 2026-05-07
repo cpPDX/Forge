@@ -33,7 +33,7 @@ export class HUD {
   _makeIcon(parent) {
     const c = document.createElement('canvas');
     c.width = c.height = 9;
-    c.style.cssText = 'width:9px;height:9px;image-rendering:pixelated;display:block;';
+    c.style.cssText = 'position:relative;display:block;width:9px;height:9px;image-rendering:pixelated;';
     if (parent) parent.appendChild(c);
     return c;
   }

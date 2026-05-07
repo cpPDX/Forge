@@ -10,6 +10,8 @@ import { SaveManager }   from '../systems/SaveManager.js';
 import { HUD }           from '../ui/HUD.js';
 import { buildTextureAtlas } from '../blocks/TextureAtlas.js';
 import { MobSystem }        from '../systems/MobSystem.js';
+import { DropSystem }       from '../systems/DropSystem.js';
+import { PlayerPreview }    from '../ui/PlayerPreview.js';
 import { CHUNK_SIZE, RENDER_DIST, B, ITEMS } from '../utils/constants.js';
 import { BlockRegistry } from '../blocks/BlockRegistry.js';
 import { ItemRegistry }  from '../blocks/ItemRegistry.js';
@@ -63,8 +65,21 @@ export class Game {
     // Mobs
     this._mobs = new MobSystem(this._scene, this._world, this._camera);
 
+    // Floating item drops
+    this._drops = new DropSystem(this._scene, this._world);
+    this._player.onDropItem = (x, y, z, id, count) => this._drops.spawn(x, y, z, id, count);
+
+    // Player preview (3D mini renderer in inventory)
+    this._playerPreview = new PlayerPreview(document.getElementById('player-preview'));
+
     // HUD
     this._hud = new HUD();
+
+    // 2×2 crafting grid state
+    this._craftGrid  = [B.AIR, B.AIR, B.AIR, B.AIR];
+    this._craftGridCounts = [0, 0, 0, 0];
+    this._cursorItem = null;  // { id, count } | null
+    this._craftResult = null; // { id, count } | null
 
     // State
     this._inventoryOpen = false;
@@ -132,8 +147,7 @@ export class Game {
   _bindInventoryUI() {
     window.__game = this;
 
-    // Wire both close buttons (bottom bar + top-right X) with touchstart so
-    // Safari iOS fires immediately without waiting for a synthesized click
+    // Wire both close buttons (bottom bar + top-right X)
     const closeEl = e => { e.preventDefault(); this.closeInventory(); };
     for (const id of ['inv-close-btn', 'inv-x-btn']) {
       const btn = document.getElementById(id);
@@ -142,7 +156,7 @@ export class Game {
       btn.addEventListener('touchstart', closeEl, { passive: false });
     }
 
-    // Tapping the dark backdrop (anywhere outside #inv-inner) also closes
+    // Tapping the dark backdrop closes
     const panel = document.getElementById('inventory-panel');
     if (panel) {
       panel.addEventListener('touchstart', e => {
@@ -153,9 +167,40 @@ export class Game {
       });
     }
 
-    // Crafting list — touchstart delegation so taps fire without click delay.
-    // data-craft-idx is set only on craftable entries in _refreshCraftingUI.
-    // touchstart calls preventDefault so the subsequent click doesn't double-fire.
+    // 2×2 craft grid slots
+    const craftGridEl = document.getElementById('craft-grid');
+    if (craftGridEl) {
+      const bindSlot = (el, i) => {
+        el.addEventListener('click', () => this._handleSlotClick('craft', i));
+        el.addEventListener('touchstart', e => { e.preventDefault(); this._handleSlotClick('craft', i); }, { passive: false });
+      };
+      craftGridEl.querySelectorAll('.craft-slot').forEach((el, i) => bindSlot(el, i));
+    }
+
+    // Craft output slot
+    const craftOut = document.getElementById('craft-output');
+    if (craftOut) {
+      craftOut.addEventListener('click', () => this._handleSlotClick('output', 0));
+      craftOut.addEventListener('touchstart', e => { e.preventDefault(); this._handleSlotClick('output', 0); }, { passive: false });
+    }
+
+    // Main inventory + hotbar grids (delegated — re-bound on open via _rebindInvGrids)
+    // Stored as a method so it can be called after updateInventoryGrid repopulates the DOM
+    this._rebindInvGrids = () => {
+      const bindGrid = (gridId, offset) => {
+        const grid = document.getElementById(gridId);
+        if (!grid) return;
+        grid.querySelectorAll('.inv-slot').forEach((el, i) => {
+          el.onclick = null;
+          el.addEventListener('click', () => this._handleSlotClick('inv', offset + i));
+          el.addEventListener('touchstart', ev => { ev.preventDefault(); this._handleSlotClick('inv', offset + i); }, { passive: false });
+        });
+      };
+      bindGrid('inv-main-grid', 0);
+      bindGrid('inv-hotbar-grid', 27);
+    };
+
+    // Crafting recipe list
     const craftList = document.getElementById('crafting-list');
     if (craftList) {
       craftList.addEventListener('touchstart', e => {
@@ -168,7 +213,7 @@ export class Game {
       });
     }
 
-    // Hotbar slots — touchstart for immediate response, click for desktop
+    // Hotbar slots (game HUD)
     for (let i = 0; i < 9; i++) {
       const el = document.getElementById(`slot-${i}`);
       if (!el) continue;
@@ -180,6 +225,12 @@ export class Game {
   closeInventory() {
     this._inventoryOpen = false;
     this._hud.showInventory(false);
+    this._playerPreview.stop();
+    if (this._cursorItem) {
+      this._inventory.addItem(this._cursorItem.id, this._cursorItem.count);
+      this._cursorItem = null;
+      this._hud.setCursorItem(null);
+    }
   }
 
   _toggleInventory() {
@@ -187,7 +238,19 @@ export class Game {
     this._hud.showInventory(this._inventoryOpen);
     if (this._inventoryOpen) {
       this._hud.updateInventoryGrid(this._inventory);
+      this._hud.updateCraftGrid(this._craftGrid.map((id, i) => ({ id, count: this._craftGridCounts[i] })));
+      this._hud.updateCraftOutput(this._craftResult);
       this._refreshCraftingUI();
+      if (this._rebindInvGrids) this._rebindInvGrids();
+      this._playerPreview.start();
+    } else {
+      this._playerPreview.stop();
+      // Return cursor item to inventory on close
+      if (this._cursorItem) {
+        this._inventory.addItem(this._cursorItem.id, this._cursorItem.count);
+        this._cursorItem = null;
+        this._hud.setCursorItem(null);
+      }
     }
   }
 
@@ -203,6 +266,7 @@ export class Game {
     this._hud.updateHotbar(this._inventory);
     this._hud.updateInventoryGrid(this._inventory);
     this._refreshCraftingUI();
+    if (this._rebindInvGrids) this._rebindInvGrids();
   }
 
   // ─── Selection outline ────────────────────────────────────────────────────
@@ -336,6 +400,7 @@ export class Game {
       this._modifiedChunks.add(k);
     }
 
+    this._drops.update(dt, this._player, this._inventory);
     this._streamChunks();
     this._updateOutline();
     this._updateFlashlight();
@@ -378,6 +443,112 @@ export class Game {
   _updateFlashlightIcon() {
     const el = document.getElementById('flashlight-indicator');
     if (el) el.style.opacity = this._flashlightOn ? '1' : '0.35';
+  }
+
+  // ─── 2×2 Craft grid ──────────────────────────────────────────────────────
+
+  _updateCraftOutput() {
+    const ing = {};
+    for (let i = 0; i < 4; i++) {
+      const id = this._craftGrid[i];
+      const ct = this._craftGridCounts[i];
+      if (id !== B.AIR && ct > 0) ing[id] = (ing[id] ?? 0) + ct;
+    }
+    const totalIn = Object.values(ing).reduce((a, b) => a + b, 0);
+    if (totalIn === 0) { this._craftResult = null; this._hud.updateCraftOutput(null); return; }
+
+    const recipe = this._crafting.allRecipes().find(r => {
+      const rTotal = r.ingredients.reduce((s, ig) => s + ig.count, 0);
+      if (rTotal !== totalIn) return false;
+      return r.ingredients.every(ig => (ing[ig.id] ?? 0) >= ig.count);
+    });
+
+    this._craftResult = recipe ? recipe.result : null;
+    this._hud.updateCraftOutput(this._craftResult);
+  }
+
+  _handleSlotClick(type, index) {
+    if (type === 'craft') {
+      if (!this._cursorItem) {
+        // Pick up from grid cell
+        if (this._craftGrid[index] !== B.AIR && this._craftGridCounts[index] > 0) {
+          this._cursorItem = { id: this._craftGrid[index], count: this._craftGridCounts[index] };
+          this._craftGrid[index] = B.AIR; this._craftGridCounts[index] = 0;
+        }
+      } else {
+        // Place cursor item into cell (or swap if different)
+        if (this._craftGrid[index] === B.AIR || this._craftGrid[index] === this._cursorItem.id) {
+          this._craftGrid[index] = this._cursorItem.id;
+          this._craftGridCounts[index] = (this._craftGridCounts[index] || 0) + this._cursorItem.count;
+          this._cursorItem = null;
+        } else {
+          // Swap
+          const tmp = { id: this._craftGrid[index], count: this._craftGridCounts[index] };
+          this._craftGrid[index] = this._cursorItem.id;
+          this._craftGridCounts[index] = this._cursorItem.count;
+          this._cursorItem = tmp;
+        }
+      }
+      this._hud.updateCraftGrid(this._craftGrid.map((id, i) => ({ id, count: this._craftGridCounts[i] })));
+      this._updateCraftOutput();
+    } else if (type === 'output') {
+      if (this._craftResult && !this._cursorItem) {
+        // Consume grid cells proportionally
+        const recipe = this._crafting.allRecipes().find(r =>
+          r.result.id === this._craftResult.id && r.result.count === this._craftResult.count);
+        if (recipe) {
+          for (const ig of recipe.ingredients) {
+            let remaining = ig.count;
+            for (let i = 0; i < 4 && remaining > 0; i++) {
+              if (this._craftGrid[i] === ig.id) {
+                const take = Math.min(this._craftGridCounts[i], remaining);
+                this._craftGridCounts[i] -= take; remaining -= take;
+                if (this._craftGridCounts[i] <= 0) { this._craftGrid[i] = B.AIR; this._craftGridCounts[i] = 0; }
+              }
+            }
+          }
+        }
+        this._inventory.addItem(this._craftResult.id, this._craftResult.count);
+        this._craftResult = null;
+        this._hud.updateCraftGrid(this._craftGrid.map((id, i) => ({ id, count: this._craftGridCounts[i] })));
+        this._hud.updateInventoryGrid(this._inventory);
+        if (this._rebindInvGrids) this._rebindInvGrids();
+        this._updateCraftOutput();
+        this._refreshCraftingUI();
+        this._hud.updateHotbar(this._inventory);
+      }
+    } else if (type === 'inv') {
+      // slots array is ordered [main(27), hotbar(9)] to match updateInventoryGrid render order
+      const allSlots = [...this._inventory.mainSlots(), ...this._inventory.hotbarSlots()];
+      const slot = allSlots[index]; // object reference — mutation propagates to Inventory._slots
+      if (!slot) return;
+
+      if (!this._cursorItem) {
+        if (slot.id !== B.AIR && slot.count > 0) {
+          this._cursorItem = { id: slot.id, count: slot.count };
+          slot.id = B.AIR; slot.count = 0;
+        }
+      } else {
+        if (slot.id === B.AIR || slot.id === this._cursorItem.id) {
+          slot.id = this._cursorItem.id;
+          slot.count = (slot.id === this._cursorItem.id ? slot.count : 0) + this._cursorItem.count;
+          this._cursorItem = null;
+        } else {
+          const tmp = { id: slot.id, count: slot.count };
+          slot.id = this._cursorItem.id; slot.count = this._cursorItem.count;
+          this._cursorItem = tmp;
+        }
+      }
+      this._hud.updateInventoryGrid(this._inventory);
+      if (this._rebindInvGrids) this._rebindInvGrids();
+      this._hud.updateHotbar(this._inventory);
+    }
+
+    const iname = this._cursorItem
+      ? (ItemRegistry.name(this._cursorItem.id) ?? BlockRegistry.name(this._cursorItem.id))
+      : null;
+    this._hud.setCursorItem(this._cursorItem
+      ? { ...this._cursorItem, name: iname } : null);
   }
 
   // ─── Crafting UI ─────────────────────────────────────────────────────────

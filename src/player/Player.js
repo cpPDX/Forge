@@ -72,6 +72,9 @@ export class Player {
     // Inventory reference (set by Game)
     this.inventory = null;
 
+    // Drop callback — if set, block breaks spawn floating items instead of going to inventory
+    this.onDropItem = null;
+
     this._dir = new THREE.Vector3();
   }
 
@@ -232,9 +235,13 @@ export class Player {
         const id = this._world.getBlock(bx, by, bz);
         const def = BlockRegistry.get(id);
         this._world.setBlock(bx, by, bz, B.AIR);
-        if (def?.drops != null && this.inventory) {
+        if (def?.drops != null) {
           if (!def.dropChance || Math.random() < def.dropChance) {
-            this.inventory.addItem(def.drops, 1);
+            if (this.onDropItem) {
+              this.onDropItem(bx + 0.5, by + 0.5, bz + 0.5, def.drops, 1);
+            } else if (this.inventory) {
+              this.inventory.addItem(def.drops, 1);
+            }
           }
         }
         this.breakProgress = 0;
@@ -264,9 +271,13 @@ export class Player {
         const bId  = this._world.getBlock(t[0], t[1], t[2]);
         const bDef = BlockRegistry.get(bId);
         this._world.setBlock(t[0], t[1], t[2], B.AIR);
-        if (bDef?.drops != null && this.inventory) {
+        if (bDef?.drops != null) {
           if (!bDef.dropChance || Math.random() < bDef.dropChance) {
-            this.inventory.addItem(bDef.drops, 1);
+            if (this.onDropItem) {
+              this.onDropItem(t[0] + 0.5, t[1] + 0.5, t[2] + 0.5, bDef.drops, 1);
+            } else if (this.inventory) {
+              this.inventory.addItem(bDef.drops, 1);
+            }
           }
         }
         this.breakProgress = 0;

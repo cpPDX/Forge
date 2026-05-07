@@ -160,6 +160,7 @@
       width: min(700px, 97vw);
       max-height: min(92vh, 92dvh);
       display: flex; flex-direction: column;
+      overflow-y: auto;
       cursor: default;
       font-family: 'Courier New', monospace;
     }
@@ -186,15 +187,46 @@
     }
     #inv-x-btn:active { filter: brightness(0.85); }
 
-    /* Two-column body: inventory left, crafting right */
-    #inv-body {
-      display: flex; flex-direction: row; gap: 10px;
-      align-items: stretch; flex: 1; min-height: 0;
+    /* Top row: armor | player preview | crafting area */
+    #inv-top {
+      display: flex; flex-direction: row;
+      align-items: center; gap: 8px;
+      margin-bottom: 8px; flex-shrink: 0;
     }
-    #inv-slots {
-      flex: 3; min-width: 0;
-      display: flex; flex-direction: column; gap: 4px;
+    #inv-armor {
+      display: flex; flex-direction: column; gap: 3px;
     }
+    #player-preview {
+      width: 64px; height: 96px;
+      image-rendering: pixelated;
+      background: #6b6b6b;
+      border: 2px solid;
+      border-top-color: #373737; border-left-color: #373737;
+      border-right-color: #fff; border-bottom-color: #fff;
+      flex-shrink: 0;
+    }
+    #inv-craft-area {
+      flex: 1; display: flex; flex-direction: column; gap: 4px;
+    }
+    #craft-grid-wrap {
+      display: flex; align-items: center; gap: 6px;
+    }
+    #craft-grid {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 2px;
+    }
+    #craft-arrow {
+      font-size: 18px; color: #555; font-weight: bold; flex-shrink: 0;
+    }
+    .armor-slot { width: 32px; height: 32px; flex-shrink: 0; }
+    .armor-slot::after {
+      content: attr(data-icon);
+      font-size: 16px; position: absolute; top: 50%; left: 50%;
+      transform: translate(-50%,-50%);
+      pointer-events: none;
+    }
+    .craft-slot { width: 32px; height: 32px; cursor: pointer; flex-shrink: 0; }
+    #craft-output { width: 32px; height: 32px; flex-shrink: 0; cursor: pointer; }
+    #craft-output.has-result { box-shadow: inset 0 0 0 2px #44ff44; }
 
     /* Inventory grid — tight packing like Minecraft */
     .inv-grid {
@@ -214,39 +246,21 @@
       position: relative;
       display: flex; align-items: center; justify-content: center;
       font-family: 'Courier New', monospace;
+      touch-action: manipulation; cursor: pointer;
     }
+    .inv-slot.cursor-active { box-shadow: inset 0 0 0 2px #ffff55; }
 
-    /* Crafting section — right column */
-    #craft-section {
-      flex: 2; min-width: 0;
-      display: flex; flex-direction: column;
-      border-left: 1px solid #555;
-      box-shadow: inset 1px 0 0 #fff;
-      padding-left: 10px;
+    /* Main + hotbar grids */
+    #inv-main-grid, #inv-hotbar-grid { margin-bottom: 4px; }
+
+    /* Cursor-item indicator */
+    #cursor-item-hud {
+      position: fixed; top: 12px; left: 50%; transform: translateX(-50%);
+      background: rgba(0,0,0,0.7); border: 2px solid #ffff55;
+      padding: 4px 8px; color: #ffff55; font-size: 11px;
+      font-family: 'Courier New', monospace; pointer-events: none;
+      z-index: 60; display: none; white-space: nowrap;
     }
-    #craft-section h3 {
-      font-size: 11px; color: #333; margin-bottom: 6px; flex-shrink: 0;
-      font-family: 'Courier New', monospace; font-weight: bold;
-      text-transform: uppercase; letter-spacing: 1px;
-    }
-    #crafting-list {
-      flex: 1; overflow-y: auto; min-height: 0;
-      -webkit-overflow-scrolling: touch;
-      border: 2px solid;
-      border-top-color: #373737; border-left-color: #373737;
-      border-right-color: #fff; border-bottom-color: #fff;
-      background: #8b8b8b;
-    }
-    .craft-entry {
-      display: flex; flex-direction: column;
-      padding: 7px 8px; cursor: pointer;
-      border-bottom: 1px solid #777;
-      touch-action: manipulation;
-    }
-    .craft-entry:hover  { background: #9a9a9a; }
-    .craft-entry:active { background: #6e6e6e; }
-    .craft-name { font-size: 12px; font-weight: bold; color: #fff; text-shadow: 1px 1px 0 #000; font-family: 'Courier New', monospace; }
-    .craft-ing  { font-size: 10px; color: #ddd; font-family: 'Courier New', monospace; margin-top: 2px; }
 
     /* Bottom close button */
     #inv-close-btn {
@@ -388,25 +402,50 @@
     <p style="font-size:11px;color:#555;margin-top:4px;">Mobile: tap to start, use joystick + look zone</p>
   </div>
 
+  <!-- Cursor item indicator (shown above inventory when holding item) -->
+  <div id="cursor-item-hud"></div>
+
   <!-- Inventory / crafting panel -->
   <div id="inventory-panel" class="hidden">
     <div id="inv-inner">
-      <!-- Header with title and prominent X close button -->
+      <!-- Header -->
       <div id="inv-header">
         <span>INVENTORY</span>
         <button id="inv-x-btn">✕</button>
       </div>
-      <div id="inv-body">
-        <div id="inv-slots">
-          <div class="inv-grid" id="inv-main-grid"></div>
-          <div class="inv-section-label">— Hotbar —</div>
-          <div class="inv-grid" id="inv-hotbar-grid"></div>
+
+      <!-- Top row: armor | player preview | 2×2 craft grid -->
+      <div id="inv-top">
+        <div id="inv-armor">
+          <div class="inv-slot armor-slot" id="armor-head"   data-icon="⛑"></div>
+          <div class="inv-slot armor-slot" id="armor-chest"  data-icon="🥋"></div>
+          <div class="inv-slot armor-slot" id="armor-legs"   data-icon="👖"></div>
+          <div class="inv-slot armor-slot" id="armor-feet"   data-icon="👟"></div>
         </div>
-        <div id="craft-section">
-          <h3>CRAFTING</h3>
-          <div id="crafting-list"></div>
+        <canvas id="player-preview" width="64" height="96"></canvas>
+        <div id="inv-craft-area">
+          <div class="inv-section-label">Crafting</div>
+          <div id="craft-grid-wrap">
+            <div id="craft-grid">
+              <div class="inv-slot craft-slot" data-craft="0"></div>
+              <div class="inv-slot craft-slot" data-craft="1"></div>
+              <div class="inv-slot craft-slot" data-craft="2"></div>
+              <div class="inv-slot craft-slot" data-craft="3"></div>
+            </div>
+            <div id="craft-arrow">→</div>
+            <div class="inv-slot" id="craft-output"></div>
+          </div>
         </div>
       </div>
+
+      <!-- Main 9×3 inventory grid -->
+      <div class="inv-section-label">Inventory</div>
+      <div class="inv-grid" id="inv-main-grid"></div>
+
+      <!-- Hotbar row -->
+      <div class="inv-section-label">Hotbar</div>
+      <div class="inv-grid" id="inv-hotbar-grid"></div>
+
       <button id="inv-close-btn">✕  CLOSE</button>
     </div>
   </div>

@@ -5,7 +5,7 @@ export class PlayerPreview {
     if (!canvas) return;
     this._canvas = canvas;
     this._renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: false });
-    this._renderer.setSize(64, 96);
+    this._renderer.setSize(64, 96, false); // false = don't override CSS with inline styles
     this._renderer.setClearColor(0x000000, 0);
 
     this._scene  = new THREE.Scene();

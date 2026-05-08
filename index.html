@@ -157,8 +157,8 @@
       border-top-color: #ffffff; border-left-color: #ffffff;
       border-right-color: #555555; border-bottom-color: #555555;
       padding: 10px 10px 8px;
-      /* 9×36px cols + 8×2px gaps + 2×10px padding + 2×4px border = 384px; clamp to vw */
-      width: min(384px, 97vw);
+      /* 9×32px cols + 8×2px gaps + 2×10px padding + 2×4px border = 332px; clamp to vw */
+      width: min(332px, 97vw);
       max-height: min(92vh, 92dvh);
       display: flex; flex-direction: column;
       overflow-y: auto; -webkit-overflow-scrolling: touch;
@@ -200,7 +200,8 @@
       margin-bottom: 8px; flex-shrink: 0;
     }
     #inv-armor {
-      display: flex; flex-direction: column; gap: 3px;
+      display: grid; grid-template-columns: 1fr 1fr; gap: 2px;
+      align-content: start;
     }
     #player-preview {
       width: 64px; height: 96px;
@@ -235,9 +236,9 @@
     #craft-output { flex-shrink: 0; cursor: pointer; }
     #craft-output.has-result { box-shadow: inset 0 0 0 2px #44ff44; }
 
-    /* Inventory grid — fixed 36px slots regardless of panel width */
+    /* Inventory grid — fixed 32px slots so layout fits landscape phones */
     .inv-grid {
-      display: grid; grid-template-columns: repeat(9, 36px);
+      display: grid; grid-template-columns: repeat(9, 32px);
       gap: 2px;
     }
     .inv-section-label {
@@ -245,7 +246,7 @@
       font-family: 'Courier New', monospace; font-weight: bold;
     }
     .inv-slot {
-      width: 36px; height: 36px;
+      width: 32px; height: 32px;
       background: #8b8b8b;
       border: 2px solid;
       border-top-color: #373737; border-left-color: #373737;
@@ -450,15 +451,13 @@
         </div>
       </div>
 
-      <!-- Main 9×3 inventory grid -->
-      <div class="inv-section-label">Inventory</div>
-      <div class="inv-grid" id="inv-main-grid"></div>
-
-      <!-- Hotbar row -->
+      <!-- Hotbar row — shown first since this is where items start -->
       <div class="inv-section-label">Hotbar</div>
       <div class="inv-grid" id="inv-hotbar-grid"></div>
 
-      <button id="inv-close-btn">✕  CLOSE</button>
+      <!-- Main 9×3 inventory grid -->
+      <div class="inv-section-label">Inventory</div>
+      <div class="inv-grid" id="inv-main-grid"></div>
     </div>
   </div>
 

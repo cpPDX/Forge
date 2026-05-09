@@ -167,14 +167,30 @@ export class Game {
       });
     }
 
+    // Helper: bind left-click, right-click (contextmenu), and mobile long-press
+    // Long-press (>400ms) triggers the right-click action (pick half / place 1)
+    const bindSlotEvents = (el, handler) => {
+      el.addEventListener('click', () => handler(false));
+      el.addEventListener('contextmenu', ev => { ev.preventDefault(); handler(true); });
+      let longTimer = null;
+      el.addEventListener('touchstart', ev => {
+        ev.preventDefault();
+        longTimer = setTimeout(() => { longTimer = null; handler(true); }, 400);
+      }, { passive: false });
+      el.addEventListener('touchend', () => {
+        if (longTimer) { clearTimeout(longTimer); longTimer = null; handler(false); }
+      });
+      el.addEventListener('touchmove', () => {
+        if (longTimer) { clearTimeout(longTimer); longTimer = null; }
+      });
+    };
+
     // 2×2 craft grid slots
     const craftGridEl = document.getElementById('craft-grid');
     if (craftGridEl) {
-      const bindSlot = (el, i) => {
-        el.addEventListener('click', () => this._handleSlotClick('craft', i));
-        el.addEventListener('touchstart', e => { e.preventDefault(); this._handleSlotClick('craft', i); }, { passive: false });
-      };
-      craftGridEl.querySelectorAll('.craft-slot').forEach((el, i) => bindSlot(el, i));
+      craftGridEl.querySelectorAll('.craft-slot').forEach((el, i) =>
+        bindSlotEvents(el, rc => this._handleSlotClick('craft', i, rc))
+      );
     }
 
     // Craft output slot
@@ -185,15 +201,13 @@ export class Game {
     }
 
     // Main inventory + hotbar grids (delegated — re-bound on open via _rebindInvGrids)
-    // Stored as a method so it can be called after updateInventoryGrid repopulates the DOM
     this._rebindInvGrids = () => {
       const bindGrid = (gridId, offset) => {
         const grid = document.getElementById(gridId);
         if (!grid) return;
         grid.querySelectorAll('.inv-slot').forEach((el, i) => {
           el.onclick = null;
-          el.addEventListener('click', () => this._handleSlotClick('inv', offset + i));
-          el.addEventListener('touchstart', ev => { ev.preventDefault(); this._handleSlotClick('inv', offset + i); }, { passive: false });
+          bindSlotEvents(el, rc => this._handleSlotClick('inv', offset + i, rc));
         });
       };
       bindGrid('inv-main-grid', 0);
@@ -454,35 +468,44 @@ export class Game {
       const ct = this._craftGridCounts[i];
       if (id !== B.AIR && ct > 0) ing[id] = (ing[id] ?? 0) + ct;
     }
-    const totalIn = Object.values(ing).reduce((a, b) => a + b, 0);
-    if (totalIn === 0) { this._craftResult = null; this._hud.updateCraftOutput(null); return; }
+    if (Object.keys(ing).length === 0) { this._craftResult = null; this._hud.updateCraftOutput(null); return; }
 
     const recipe = this._crafting.allRecipes().find(r => {
-      const rTotal = r.ingredients.reduce((s, ig) => s + ig.count, 0);
-      if (rTotal !== totalIn) return false;
-      return r.ingredients.every(ig => (ing[ig.id] ?? 0) >= ig.count);
+      // All required ingredients present in sufficient quantity
+      if (!r.ingredients.every(ig => (ing[ig.id] ?? 0) >= ig.count)) return false;
+      // No extra ingredient types that the recipe doesn't require
+      const recipeIds = new Set(r.ingredients.map(ig => ig.id));
+      return Object.keys(ing).every(id => recipeIds.has(Number(id)));
     });
 
     this._craftResult = recipe ? recipe.result : null;
     this._hud.updateCraftOutput(this._craftResult);
   }
 
-  _handleSlotClick(type, index) {
+  _handleSlotClick(type, index, isRightClick = false) {
     if (type === 'craft') {
       if (!this._cursorItem) {
-        // Pick up from grid cell
         if (this._craftGrid[index] !== B.AIR && this._craftGridCounts[index] > 0) {
-          this._cursorItem = { id: this._craftGrid[index], count: this._craftGridCounts[index] };
-          this._craftGrid[index] = B.AIR; this._craftGridCounts[index] = 0;
+          if (isRightClick) {
+            // Pick up half
+            const half = Math.ceil(this._craftGridCounts[index] / 2);
+            this._cursorItem = { id: this._craftGrid[index], count: half };
+            this._craftGridCounts[index] -= half;
+            if (this._craftGridCounts[index] <= 0) { this._craftGrid[index] = B.AIR; this._craftGridCounts[index] = 0; }
+          } else {
+            this._cursorItem = { id: this._craftGrid[index], count: this._craftGridCounts[index] };
+            this._craftGrid[index] = B.AIR; this._craftGridCounts[index] = 0;
+          }
         }
       } else {
-        // Place cursor item into cell (or swap if different)
         if (this._craftGrid[index] === B.AIR || this._craftGrid[index] === this._cursorItem.id) {
+          const place = isRightClick ? 1 : this._cursorItem.count;
           this._craftGrid[index] = this._cursorItem.id;
-          this._craftGridCounts[index] = (this._craftGridCounts[index] || 0) + this._cursorItem.count;
-          this._cursorItem = null;
-        } else {
-          // Swap
+          this._craftGridCounts[index] = (this._craftGridCounts[index] || 0) + place;
+          this._cursorItem.count -= place;
+          if (this._cursorItem.count <= 0) this._cursorItem = null;
+        } else if (!isRightClick) {
+          // Swap on left-click only
           const tmp = { id: this._craftGrid[index], count: this._craftGridCounts[index] };
           this._craftGrid[index] = this._cursorItem.id;
           this._craftGridCounts[index] = this._cursorItem.count;
@@ -492,8 +515,7 @@ export class Game {
       this._hud.updateCraftGrid(this._craftGrid.map((id, i) => ({ id, count: this._craftGridCounts[i] })));
       this._updateCraftOutput();
     } else if (type === 'output') {
-      if (this._craftResult && !this._cursorItem) {
-        // Consume grid cells proportionally
+      if (!isRightClick && this._craftResult && !this._cursorItem) {
         const recipe = this._crafting.allRecipes().find(r =>
           r.result.id === this._craftResult.id && r.result.count === this._craftResult.count);
         if (recipe) {
@@ -520,20 +542,31 @@ export class Game {
     } else if (type === 'inv') {
       // slots array is ordered [main(27), hotbar(9)] to match updateInventoryGrid render order
       const allSlots = [...this._inventory.mainSlots(), ...this._inventory.hotbarSlots()];
-      const slot = allSlots[index]; // object reference — mutation propagates to Inventory._slots
+      const slot = allSlots[index];
       if (!slot) return;
 
       if (!this._cursorItem) {
         if (slot.id !== B.AIR && slot.count > 0) {
-          this._cursorItem = { id: slot.id, count: slot.count };
-          slot.id = B.AIR; slot.count = 0;
+          if (isRightClick) {
+            // Pick up half (rounded up)
+            const half = Math.ceil(slot.count / 2);
+            this._cursorItem = { id: slot.id, count: half };
+            slot.count -= half;
+            if (slot.count <= 0) { slot.id = B.AIR; slot.count = 0; }
+          } else {
+            this._cursorItem = { id: slot.id, count: slot.count };
+            slot.id = B.AIR; slot.count = 0;
+          }
         }
       } else {
         if (slot.id === B.AIR || slot.id === this._cursorItem.id) {
+          const existing = slot.id === this._cursorItem.id ? slot.count : 0;
+          const place = isRightClick ? 1 : this._cursorItem.count;
           slot.id = this._cursorItem.id;
-          slot.count = (slot.id === this._cursorItem.id ? slot.count : 0) + this._cursorItem.count;
-          this._cursorItem = null;
-        } else {
+          slot.count = existing + place;
+          this._cursorItem.count -= place;
+          if (this._cursorItem.count <= 0) this._cursorItem = null;
+        } else if (!isRightClick) {
           const tmp = { id: slot.id, count: slot.count };
           slot.id = this._cursorItem.id; slot.count = this._cursorItem.count;
           this._cursorItem = tmp;

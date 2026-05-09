@@ -21,11 +21,6 @@ const RECIPES = [
   { ingredients: [{ id: B.SNOW, count: 4 }], result: { id: B.SNOW_BLOCK, count: 1 } },
   // Furnace
   { ingredients: [{ id: B.COBBLESTONE, count: 8 }], result: { id: B.FURNACE, count: 1 } },
-  // ── Weapons (simple: 2 material) ─────────────────────────────────────────
-  { ingredients: [{ id: B.OAK_PLANKS,  count: 2 }], result: { id: ITEMS.WOODEN_SWORD,  count: 1 } },
-  { ingredients: [{ id: B.COBBLESTONE, count: 2 }], result: { id: ITEMS.STONE_SWORD,   count: 1 } },
-  { ingredients: [{ id: B.IRON_ORE,    count: 2 }], result: { id: ITEMS.IRON_SWORD,    count: 1 } },
-  { ingredients: [{ id: B.DIAMOND_ORE, count: 2 }], result: { id: ITEMS.DIAMOND_SWORD, count: 1 } },
   // ── Sticks ───────────────────────────────────────────────────────────────
   { ingredients: [{ id: B.OAK_PLANKS, count: 2 }], result: { id: ITEMS.STICK, count: 4 } },
   // ── Torches (coal ore + stick → 4 torches) ───────────────────────────────

@@ -6,7 +6,7 @@ import { Controls }      from '../player/Controls.js';
 import { Inventory }     from '../systems/Inventory.js';
 import { Crafting }      from '../systems/Crafting.js';
 import { TimeSystem }    from '../systems/TimeSystem.js';
-import { SaveManager }   from '../systems/SaveManager.js';
+import { SaveManager, SAVE_VERSION } from '../systems/SaveManager.js';
 import { HUD }           from '../ui/HUD.js';
 import { buildTextureAtlas } from '../blocks/TextureAtlas.js';
 import { MobSystem }        from '../systems/MobSystem.js';
@@ -85,10 +85,10 @@ export class Game {
     this._inventoryOpen = false;
     this._dead = false;
     this._lastSave = 0;
+    this._saveError = null;
     this._fps = 60;
     this._fpsAlpha = 0.1;
     this._lastTs = 0;
-    this._modifiedChunks = new Set();
 
     // Starter inventory
     this._inventory.addItem(ITEMS.WOODEN_SWORD, 1);
@@ -108,31 +108,43 @@ export class Game {
 
   _loadSave() {
     const data = this._save.load();
-    if (!data) return;
-    this._player.load(data.player);
-    this._inventory.load(data.inventory);
-    this._time.load(data.time);
-    if (data.chunks) {
-      for (const [k, arr] of Object.entries(data.chunks)) {
-        const [cx, cz] = k.split(',').map(Number);
-        this._world.loadChunkData(cx, cz, arr);
+    if (!data) {
+      this._saveError = this._save.lastError;
+      return;
+    }
+
+    try {
+      // Validate/apply world data before mutating player-facing state. World loaders
+      // validate their complete payload before changing any chunk.
+      if (data.version >= 2) {
+        this._world.loadEdits(data.worldEdits ?? {});
+      } else {
+        this._world.loadLegacyChunks(data.chunks ?? {});
       }
+
+      this._player.load(data.player);
+      this._inventory.load(data.inventory);
+      this._time.load(data.time);
+      this._saveError = null;
+    } catch (error) {
+      this._saveError = error;
+      console.error('Save load failed:', error);
     }
   }
 
   _doSave() {
-    const chunks = {};
-    for (const k of this._modifiedChunks) {
-      const [cx, cz] = k.split(',').map(Number);
-      if (this._world.chunkLoaded(cx, cz)) {
-        chunks[k] = Array.from(this._world.getChunkData(cx, cz));
-      }
-    }
-    this._save.autoSave({
+    const state = {
+      version: SAVE_VERSION,
       player:    this._player.serialize(),
       inventory: this._inventory.serialize(),
       time:      this._time.serialize(),
-      chunks,
+      worldEdits: this._world.serializeEdits(),
+    };
+
+    return this._save.autoSave(state).then(result => {
+      this._saveError = result.ok ? null : result.error;
+      if (!result.ok) console.error('Save failed:', result.error);
+      return result;
     });
   }
 
@@ -331,11 +343,6 @@ export class Game {
         this._chunkMesh._dispose(mcx, mcz);
       }
     }
-
-    // Track newly modified chunks for save
-    for (const k of this._world._dirty) {
-      this._modifiedChunks.add(k);
-    }
   }
 
   // ─── Main loop ────────────────────────────────────────────────────────────
@@ -407,11 +414,6 @@ export class Game {
       this._hud.setLabel(BlockRegistry.name(id));
     } else {
       this._hud.setLabel('');
-    }
-
-    // Track dirty chunks from setBlock calls
-    for (const k of this._world._dirty) {
-      this._modifiedChunks.add(k);
     }
 
     this._drops.update(dt, this._player, this._inventory);

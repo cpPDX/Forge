@@ -354,7 +354,7 @@ export class World {
 
     // Ores: evaluate rare/deep tiers first so common coal cannot shadow them.
     const ov = this._oreN(x * 0.17 + y * 0.13, z * 0.17 + y * 0.11);
-    if (y >= 4   && y < 16  && ov > 0.93) return B.DIAMOND_ORE;
+    if (y >= 4   && y < 16  && ov > 0.92) return B.DIAMOND_ORE;
     if (y >= 4   && y < 32  && ov > 0.90) return B.GOLD_ORE;
     if (y >= 4   && y < 48  && ov > 0.85) return B.IRON_ORE;
     if (y >= 4   && y < 64  && ov > 0.78) return B.COAL_ORE;

@@ -3,7 +3,7 @@ import { World }         from '../world/World.js';
 import { ChunkMesh }     from '../world/ChunkMesh.js';
 import { Player }        from '../player/Player.js';
 import { Controls }      from '../player/Controls.js';
-import { Inventory }     from '../systems/Inventory.js';
+import { Inventory, MAX_STACK } from '../systems/Inventory.js';
 import { Crafting }      from '../systems/Crafting.js';
 import { TimeSystem }    from '../systems/TimeSystem.js';
 import { SaveManager, SAVE_VERSION } from '../systems/SaveManager.js';
@@ -123,8 +123,11 @@ export class Game {
       }
 
       this._player.load(data.player);
-      this._inventory.load(data.inventory);
+      const inventoryOverflow = this._inventory.load(data.inventory);
       this._time.load(data.time);
+      for (const item of inventoryOverflow) {
+        this._drops.spawn(this._player.x, this._player.y + 0.75, this._player.z, item.id, item.count);
+      }
       this._saveError = null;
     } catch (error) {
       this._saveError = error;
@@ -248,15 +251,22 @@ export class Game {
     }
   }
 
+  _returnCursorItem() {
+    if (!this._cursorItem) return;
+    const { id, count } = this._cursorItem;
+    const overflow = this._inventory.addItem(id, count);
+    if (overflow > 0) {
+      this._drops.spawn(this._player.x, this._player.y + 0.75, this._player.z, id, overflow);
+    }
+    this._cursorItem = null;
+    this._hud.setCursorItem(null);
+  }
+
   closeInventory() {
     this._inventoryOpen = false;
     this._hud.showInventory(false);
     this._playerPreview.stop();
-    if (this._cursorItem) {
-      this._inventory.addItem(this._cursorItem.id, this._cursorItem.count);
-      this._cursorItem = null;
-      this._hud.setCursorItem(null);
-    }
+    this._returnCursorItem();
   }
 
   _toggleInventory() {
@@ -271,12 +281,7 @@ export class Game {
       this._playerPreview.start();
     } else {
       this._playerPreview.stop();
-      // Return cursor item to inventory on close
-      if (this._cursorItem) {
-        this._inventory.addItem(this._cursorItem.id, this._cursorItem.count);
-        this._cursorItem = null;
-        this._hud.setCursorItem(null);
-      }
+      this._returnCursorItem();
     }
   }
 
@@ -501,13 +506,18 @@ export class Game {
         }
       } else {
         if (this._craftGrid[index] === B.AIR || this._craftGrid[index] === this._cursorItem.id) {
-          const place = isRightClick ? 1 : this._cursorItem.count;
-          this._craftGrid[index] = this._cursorItem.id;
-          this._craftGridCounts[index] = (this._craftGridCounts[index] || 0) + place;
-          this._cursorItem.count -= place;
-          if (this._cursorItem.count <= 0) this._cursorItem = null;
-        } else if (!isRightClick) {
-          // Swap on left-click only
+          const existing = this._craftGrid[index] === this._cursorItem.id ? this._craftGridCounts[index] : 0;
+          const capacity = Math.max(0, MAX_STACK - existing);
+          const requested = isRightClick ? 1 : this._cursorItem.count;
+          const place = Math.min(requested, capacity);
+          if (place > 0) {
+            this._craftGrid[index] = this._cursorItem.id;
+            this._craftGridCounts[index] = existing + place;
+            this._cursorItem.count -= place;
+            if (this._cursorItem.count <= 0) this._cursorItem = null;
+          }
+        } else if (!isRightClick && this._cursorItem.count <= MAX_STACK) {
+          // Swap on left-click only; both sides remain valid stacks.
           const tmp = { id: this._craftGrid[index], count: this._craftGridCounts[index] };
           this._craftGrid[index] = this._cursorItem.id;
           this._craftGridCounts[index] = this._cursorItem.count;
@@ -518,6 +528,8 @@ export class Game {
       this._updateCraftOutput();
     } else if (type === 'output') {
       if (!isRightClick && this._craftResult && !this._cursorItem) {
+        if (!this._inventory.canAdd(this._craftResult.id, this._craftResult.count)) return;
+
         const recipe = this._crafting.allRecipes().find(r =>
           r.result.id === this._craftResult.id && r.result.count === this._craftResult.count);
         if (recipe) {
@@ -563,12 +575,16 @@ export class Game {
       } else {
         if (slot.id === B.AIR || slot.id === this._cursorItem.id) {
           const existing = slot.id === this._cursorItem.id ? slot.count : 0;
-          const place = isRightClick ? 1 : this._cursorItem.count;
-          slot.id = this._cursorItem.id;
-          slot.count = existing + place;
-          this._cursorItem.count -= place;
-          if (this._cursorItem.count <= 0) this._cursorItem = null;
-        } else if (!isRightClick) {
+          const capacity = Math.max(0, MAX_STACK - existing);
+          const requested = isRightClick ? 1 : this._cursorItem.count;
+          const place = Math.min(requested, capacity);
+          if (place > 0) {
+            slot.id = this._cursorItem.id;
+            slot.count = existing + place;
+            this._cursorItem.count -= place;
+            if (this._cursorItem.count <= 0) this._cursorItem = null;
+          }
+        } else if (!isRightClick && this._cursorItem.count <= MAX_STACK) {
           const tmp = { id: slot.id, count: slot.count };
           slot.id = this._cursorItem.id; slot.count = this._cursorItem.count;
           this._cursorItem = tmp;

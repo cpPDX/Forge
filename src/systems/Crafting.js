@@ -43,29 +43,38 @@ export class Crafting {
     return RECIPES.filter(r => r.ingredients.every(ing => inventory.countOf(ing.id) >= ing.count));
   }
 
+  _craftRecipe(recipe, inventory) {
+    if (!recipe) return false;
+    if (!recipe.ingredients.every(ing => inventory.countOf(ing.id) >= ing.count)) return false;
+
+    // Snapshot makes the operation atomic. Ingredient removal may free the slot
+    // needed for the result, so checking result capacity before removal would
+    // incorrectly reject valid crafts in a full inventory.
+    const before = inventory.serialize();
+    for (const ing of recipe.ingredients) {
+      if (!inventory.removeItem(ing.id, ing.count)) {
+        inventory.load(before);
+        return false;
+      }
+    }
+
+    const overflow = inventory.addItem(recipe.result.id, recipe.result.count);
+    if (overflow > 0) {
+      inventory.load(before);
+      return false;
+    }
+    return true;
+  }
+
   // Attempt to craft recipe at index in available list; returns true on success
   craft(recipeIdx, inventory) {
-    const avail = this.available(inventory);
-    const recipe = avail[recipeIdx];
-    if (!recipe) return false;
-
-    for (const ing of recipe.ingredients) {
-      if (!inventory.removeItem(ing.id, ing.count)) return false;
-    }
-    inventory.addItem(recipe.result.id, recipe.result.count);
-    return true;
+    const recipe = this.available(inventory)[recipeIdx];
+    return this._craftRecipe(recipe, inventory);
   }
 
   // Craft by index into full RECIPES array (used by the "show all" UI)
   craftByIndex(idx, inventory) {
-    const recipe = RECIPES[idx];
-    if (!recipe) return false;
-    if (!recipe.ingredients.every(ing => inventory.countOf(ing.id) >= ing.count)) return false;
-    for (const ing of recipe.ingredients) {
-      if (!inventory.removeItem(ing.id, ing.count)) return false;
-    }
-    inventory.addItem(recipe.result.id, recipe.result.count);
-    return true;
+    return this._craftRecipe(RECIPES[idx], inventory);
   }
 
   allRecipes() { return RECIPES; }

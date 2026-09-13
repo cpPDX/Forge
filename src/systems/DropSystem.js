@@ -22,12 +22,13 @@ export class DropSystem {
   }
 
   spawn(x, y, z, id, count = 1) {
+    if (id === B.AIR || count <= 0) return null;
     const geo  = new THREE.BoxGeometry(0.3, 0.3, 0.3);
     const mat  = new THREE.MeshLambertMaterial({ color: itemColor(id) });
     const mesh = new THREE.Mesh(geo, mat);
     mesh.position.set(x, y, z);
     this._scene.add(mesh);
-    this._drops.push({
+    const drop = {
       x, y, z, id, count,
       vx: (Math.random() - 0.5) * 2,
       vy: 3,
@@ -37,7 +38,9 @@ export class DropSystem {
       age: 0,
       mesh,
       dead: false,
-    });
+    };
+    this._drops.push(drop);
+    return drop;
   }
 
   update(dt, player, inventory) {
@@ -68,7 +71,8 @@ export class DropSystem {
         const dz = player.z - d.z;
         if (Math.sqrt(dx*dx + dy*dy + dz*dz) < PICKUP_DIST) {
           const overflow = inventory.addItem(d.id, d.count);
-          if (overflow === 0) {
+          d.count = overflow;
+          if (d.count === 0) {
             d.dead = true;
             this._scene.remove(d.mesh);
             d.mesh.geometry.dispose();

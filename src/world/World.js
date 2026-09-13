@@ -1,6 +1,7 @@
 import { B, CHUNK_SIZE, CHUNK_HEIGHT, SEA_LEVEL } from '../utils/constants.js';
 
 const GRAVITY_BLOCKS = new Set([B.SAND, B.GRAVEL]);
+const CHUNK_VOLUME = CHUNK_SIZE * CHUNK_SIZE * CHUNK_HEIGHT;
 import { makeFBM2D, makeFBM3D } from '../utils/noise.js';
 import { BlockRegistry } from '../blocks/BlockRegistry.js';
 
@@ -9,11 +10,24 @@ function rngSeed(seed) {
   return () => { s = (s * 1664525 + 1013904223) & 0xffffffff; return (s>>>0)/0xffffffff; };
 }
 
+function parseChunkKey(key) {
+  const parts = String(key).split(',');
+  if (parts.length !== 2) throw new Error(`Invalid chunk key: ${key}`);
+  const cx = Number(parts[0]), cz = Number(parts[1]);
+  if (!Number.isInteger(cx) || !Number.isInteger(cz)) throw new Error(`Invalid chunk key: ${key}`);
+  return { key: `${cx},${cz}`, cx, cz };
+}
+
+function isBlockId(id) {
+  return Number.isInteger(id) && id >= 0 && id <= 255;
+}
+
 export class World {
   constructor(seed) {
     this.seed   = seed;
     this._chunks = new Map(); // "cx,cz" → Uint8Array
     this._dirty  = new Set();
+    this._edits  = new Map(); // "cx,cz" → Map<chunkIndex, blockId>
 
     const s = seed;
     this._hNoise    = makeFBM2D(s ^ 0x1234, 6);
@@ -37,6 +51,15 @@ export class World {
     return this._chunks.get(k);
   }
 
+  _recordEdit(key, idx, id) {
+    let edits = this._edits.get(key);
+    if (!edits) {
+      edits = new Map();
+      this._edits.set(key, edits);
+    }
+    edits.set(idx, id);
+  }
+
   // ─── Public API ──────────────────────────────────────────────────────────
 
   getBlock(x, y, z) {
@@ -54,8 +77,11 @@ export class World {
     const cz = Math.floor(z / CHUNK_SIZE);
     const lx = ((x % CHUNK_SIZE) + CHUNK_SIZE) % CHUNK_SIZE;
     const lz = ((z % CHUNK_SIZE) + CHUNK_SIZE) % CHUNK_SIZE;
-    this._ensure(cx, cz)[this._idx(lx, y, lz)] = id;
-    this._dirty.add(this._key(cx, cz));
+    const key = this._key(cx, cz);
+    const idx = this._idx(lx, y, lz);
+    this._ensure(cx, cz)[idx] = id;
+    this._recordEdit(key, idx, id);
+    this._dirty.add(key);
     // Neighboring chunks need remesh if block is on border
     if (lx === 0)              this._dirty.add(this._key(cx-1, cz));
     if (lx === CHUNK_SIZE - 1) this._dirty.add(this._key(cx+1, cz));
@@ -88,6 +114,93 @@ export class World {
   isDirty(cx, cz) { return this._dirty.has(this._key(cx, cz)); }
   clearDirty(cx, cz) { this._dirty.delete(this._key(cx, cz)); }
   markDirty(cx, cz) { this._dirty.add(this._key(cx, cz)); }
+
+  // ─── Sparse world persistence ─────────────────────────────────────────────
+
+  serializeEdits() {
+    const out = {};
+    for (const [key, edits] of this._edits) {
+      if (edits.size === 0) continue;
+      const flat = [];
+      for (const [idx, id] of [...edits.entries()].sort((a, b) => a[0] - b[0])) {
+        flat.push(idx, id);
+      }
+      out[key] = flat;
+    }
+    return out;
+  }
+
+  loadEdits(serialized) {
+    if (serialized == null) return;
+    if (typeof serialized !== 'object' || Array.isArray(serialized)) {
+      throw new Error('Invalid world edit payload');
+    }
+
+    // Validate everything before mutating world state.
+    const parsed = [];
+    for (const [rawKey, flat] of Object.entries(serialized)) {
+      const { key, cx, cz } = parseChunkKey(rawKey);
+      if (!Array.isArray(flat) || flat.length % 2 !== 0) {
+        throw new Error(`Invalid edit list for chunk ${key}`);
+      }
+      const pairs = [];
+      for (let i = 0; i < flat.length; i += 2) {
+        const idx = flat[i], id = flat[i + 1];
+        if (!Number.isInteger(idx) || idx < 0 || idx >= CHUNK_VOLUME || !isBlockId(id)) {
+          throw new Error(`Invalid edit entry for chunk ${key}`);
+        }
+        pairs.push([idx, id]);
+      }
+      parsed.push({ key, cx, cz, pairs });
+    }
+
+    for (const { key, cx, cz, pairs } of parsed) {
+      const data = this._ensure(cx, cz);
+      const edits = new Map();
+      for (const [idx, id] of pairs) {
+        data[idx] = id;
+        edits.set(idx, id);
+      }
+      if (edits.size > 0) this._edits.set(key, edits);
+      this._dirty.add(key);
+    }
+  }
+
+  loadLegacyChunks(chunks) {
+    if (chunks == null) return;
+    if (typeof chunks !== 'object' || Array.isArray(chunks)) {
+      throw new Error('Invalid legacy chunk payload');
+    }
+
+    // Validate all legacy chunks first so corrupt data cannot be partially applied.
+    const parsed = [];
+    for (const [rawKey, rawData] of Object.entries(chunks)) {
+      const { key, cx, cz } = parseChunkKey(rawKey);
+      if (!Array.isArray(rawData) || rawData.length !== CHUNK_VOLUME) {
+        throw new Error(`Invalid legacy chunk length for ${key}`);
+      }
+      if (!rawData.every(isBlockId)) {
+        throw new Error(`Invalid legacy block data for ${key}`);
+      }
+      parsed.push({ key, cx, cz, data: new Uint8Array(rawData) });
+    }
+
+    for (const { key, cx, cz, data: saved } of parsed) {
+      const generated = this._ensure(cx, cz);
+      const edits = new Map();
+      for (let idx = 0; idx < CHUNK_VOLUME; idx++) {
+        if (saved[idx] !== generated[idx]) edits.set(idx, saved[idx]);
+      }
+      this._chunks.set(key, saved);
+      if (edits.size > 0) this._edits.set(key, edits);
+      this._dirty.add(key);
+    }
+  }
+
+  // Backward-compatible single-chunk loader for older callers.
+  loadChunkData(cx, cz, data) {
+    this.loadLegacyChunks({ [this._key(cx, cz)]: data });
+  }
 
   // ─── Surface height ───────────────────────────────────────────────────────
 
@@ -126,7 +239,7 @@ export class World {
   // ─── Chunk generation ─────────────────────────────────────────────────────
 
   _generate(cx, cz, key) {
-    const data = new Uint8Array(CHUNK_SIZE * CHUNK_SIZE * CHUNK_HEIGHT);
+    const data = new Uint8Array(CHUNK_VOLUME);
     const bx0  = cx * CHUNK_SIZE;
     const bz0  = cz * CHUNK_SIZE;
 
@@ -236,12 +349,7 @@ export class World {
     }
   }
 
-  // Load chunk data (from save)
-  loadChunkData(cx, cz, data) {
-    this._chunks.set(this._key(cx, cz), new Uint8Array(data));
-  }
-
-  // Serialize modified chunks
+  // Legacy full-chunk serializer retained for diagnostics/migration tooling.
   serializeChunks(modifiedKeys) {
     const out = {};
     for (const k of modifiedKeys) {

@@ -27,17 +27,17 @@ jobs:
           node-version: 20
           cache: npm
 
-      - name: Generate Vite 6.4.3 lockfile on audit branch
+      - name: Refresh patched transitive lockfile dependencies
         if: github.event_name == 'pull_request' && github.head_ref == 'feature/52-dependency-audit'
         run: |
           git fetch origin "$GITHUB_HEAD_REF"
           git checkout -B "$GITHUB_HEAD_REF" "origin/$GITHUB_HEAD_REF"
-          npm install vite@6.4.3 --save-dev
+          npm audit fix
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add package.json package-lock.json
+          git add package-lock.json
           if ! git diff --cached --quiet; then
-            git commit -m "chore: upgrade Vite to patched 6.4.3"
+            git commit -m "chore: refresh patched transitive dependencies"
             git push origin "HEAD:$GITHUB_HEAD_REF"
           fi
 

@@ -4,6 +4,7 @@ import { ForgeController } from './systems/ForgeController.js';
 import { ResourceProgressionController } from './systems/ResourceProgressionController.js';
 import { NightPressureController } from './systems/NightPressureController.js';
 import { FinaleController } from './systems/FinaleController.js';
+import { RuntimePerformanceController } from './systems/RuntimePerformanceController.js';
 
 const canvas = document.getElementById('game-canvas');
 
@@ -15,6 +16,7 @@ try {
   new ResourceProgressionController(game).init();
   const nightPressureController = new NightPressureController(game).init();
   new FinaleController(game, { forgeController, nightPressureController }).init();
+  new RuntimePerformanceController(game).init();
   game.start();
 } catch (err) {
   const el = document.createElement('div');

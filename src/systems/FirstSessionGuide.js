@@ -11,6 +11,7 @@ const STEPS = [
   'stone',
   'place',
   'prepare',
+  'complete',
 ];
 
 function clampStep(index) {
@@ -31,17 +32,23 @@ export class FirstSessionGuide {
   }
 
   get step() { return STEPS[this._stepIndex]; }
-  get fundamentalsComplete() { return this.step === 'prepare'; }
+  get fundamentalsComplete() { return this.step === 'prepare' || this.step === 'complete'; }
   get allowsHostiles() { return this._hostilesUnlocked; }
 
   markReturningPlayer() {
-    this._stepIndex = STEPS.indexOf('prepare');
+    this._stepIndex = STEPS.indexOf('complete');
     this._moved = true;
     this._looked = true;
     this._jumped = true;
     this._placedBlocks = Math.max(1, this._placedBlocks);
     this._hostilesUnlocked = true;
     this._waitingForDawn = false;
+  }
+
+  markForgeEstablished() {
+    if (this.step !== 'prepare') return false;
+    this._stepIndex = STEPS.indexOf('complete');
+    return true;
   }
 
   onBlockPlaced() {
@@ -64,9 +71,7 @@ export class FirstSessionGuide {
 
     let changed = false;
 
-    // If the player finishes the fundamentals after dark, do not unleash enemies
-    // immediately. Wait for daylight, then the following night becomes dangerous.
-    if (this.step === 'prepare' && this._waitingForDawn && isDay) {
+    if (this.fundamentalsComplete && this._waitingForDawn && isDay) {
       this._waitingForDawn = false;
       this._hostilesUnlocked = true;
       changed = true;
@@ -173,10 +178,7 @@ export class FirstSessionGuide {
         };
       }
       case 'inventory':
-        return {
-          title: 'Open your pack',
-          hint: `${invControl} to open Inventory and Hand Crafting.`,
-        };
+        return { title: 'Open your pack', hint: `${invControl} to open Inventory and Hand Crafting.` };
       case 'planks':
         return {
           title: 'Craft Oak Planks',
@@ -201,10 +203,7 @@ export class FirstSessionGuide {
         };
       }
       case 'equip':
-        return {
-          title: 'Equip your pickaxe',
-          hint: `Find the Wooden Pickaxe in your hotbar and ${selectControl}.`,
-        };
+        return { title: 'Equip your pickaxe', hint: `Find the Wooden Pickaxe in your hotbar and ${selectControl}.` };
       case 'stone': {
         const have = inventory.countOf(B.COBBLESTONE);
         return {
@@ -219,15 +218,17 @@ export class FirstSessionGuide {
           hint: `Select Planks or Cobblestone, aim at a block face, then ${placeControl} to place one block.`,
         };
       case 'prepare':
-      default:
         return {
-          title: 'Prepare for night',
+          title: 'Establish your forge',
           hint: this._waitingForDawn
-            ? 'You learned the basics after dark. Use this quiet night to gather and build; danger begins after the next sunset.'
-            : 'Hearts are health. Drumsticks are hunger. Darkness brings danger - gather stone and establish a safe foothold.',
-          progress: 'Next objective: establish and improve your first forge.',
+            ? 'This night stays quiet. Mine more stone, craft a Stone Forge, and use it before the next sunset.'
+            : 'Mine enough Cobblestone to craft and place a Stone Forge, then interact with it to begin refining.',
+          progress: 'Recipe: 8 Cobblestone → Stone Forge',
           goal: true,
         };
+      case 'complete':
+      default:
+        return null;
     }
   }
 
@@ -256,9 +257,7 @@ export class FirstSessionGuide {
       ? data.placedBlocks
       : 0;
 
-    if (this.step === 'prepare') {
-      // Older first-session saves may not contain these fields. Treat a completed
-      // guide as unlocked rather than replaying protection indefinitely.
+    if (this.fundamentalsComplete) {
       this._hostilesUnlocked = data.hostilesUnlocked !== false;
       this._waitingForDawn = data.waitingForDawn === true && !this._hostilesUnlocked;
     } else {

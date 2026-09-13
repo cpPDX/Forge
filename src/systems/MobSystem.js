@@ -1,9 +1,11 @@
 import * as THREE from 'three';
-import { GRAVITY, B } from '../utils/constants.js';
+import { GRAVITY, B, CHUNK_HEIGHT } from '../utils/constants.js';
 import { ENEMY_TYPES, rollEnemyDrop } from './EnemyIdentity.js';
 
 const HALF_W = 0.3;
 const MOB_H  = 1.8;
+const PROJECTILE_SWEEP_STEP = 0.2;
+export const MOB_DESPAWN_DISTANCE = 48;
 let _nextId  = 1;
 
 function makeMob(x, y, z, type) {
@@ -236,6 +238,9 @@ export class MobSystem {
   }
 
   update(dt, player, isNight) {
+    this._despawnDistant(player);
+    this._mobs = this._mobs.filter(m => !m.dead);
+
     this._spawnTimer -= dt;
     if (isNight && this._spawnTimer <= 0 && this._mobs.length < this._maxMobs) {
       this._trySpawn(player);
@@ -252,6 +257,19 @@ export class MobSystem {
 
   // ─── Internal ─────────────────────────────────────────────────────────────
 
+  _despawnDistant(player) {
+    const maxDistSq = MOB_DESPAWN_DISTANCE * MOB_DESPAWN_DISTANCE;
+    for (const mob of this._mobs) {
+      if (mob.dead) continue;
+      const dx = player.x - mob.x;
+      const dy = player.y - mob.y;
+      const dz = player.z - mob.z;
+      if (dx * dx + dy * dy + dz * dz > maxDistSq) {
+        this._kill(mob, { drop: false });
+      }
+    }
+  }
+
   _pickSpawnType() {
     const r = Math.random();
     const ashboundEnd = this._typeWeights[ENEMY_TYPES.ASHBOUND];
@@ -266,7 +284,7 @@ export class MobSystem {
     if (radius <= 0) return false;
 
     const minY = Math.max(1, Math.floor(y) - 4);
-    const maxY = Math.min(127, Math.floor(y) + 4);
+    const maxY = Math.min(CHUNK_HEIGHT - 1, Math.floor(y) + 4);
     for (let dx = -radius; dx <= radius; dx++) {
       for (let dz = -radius; dz <= radius; dz++) {
         if (dx * dx + dz * dz > radius * radius) continue;
@@ -288,7 +306,9 @@ export class MobSystem {
     const fx = Math.floor(sx), fz = Math.floor(sz);
     const type = this._pickSpawnType();
 
-    for (let y = 100; y > 1; y--) {
+    // Search from the actual world ceiling downward so high terrain cannot
+    // accidentally select a cave or lower shelf simply because it is above Y=100.
+    for (let y = CHUNK_HEIGHT - 3; y > 1; y--) {
       if (this._world.isSolid(fx, y, fz) &&
           !this._world.isSolid(fx, y + 1, fz) &&
           !this._world.isSolid(fx, y + 2, fz)) {
@@ -462,19 +482,40 @@ export class MobSystem {
       const nx = projectile.x + projectile.vx * dt;
       const ny = projectile.y + projectile.vy * dt;
       const nz = projectile.z + projectile.vz * dt;
+      const dx = nx - projectile.x;
+      const dy = ny - projectile.y;
+      const dz = nz - projectile.z;
+      const travel = Math.sqrt(dx * dx + dy * dy + dz * dz);
+      const steps = Math.max(1, Math.ceil(travel / PROJECTILE_SWEEP_STEP));
+      let collided = false;
 
-      if (this._world.isSolid(Math.floor(nx), Math.floor(ny), Math.floor(nz))) {
-        this._killProjectile(projectile); continue;
+      // Sweep the entire segment so the 0.1s game-loop dt cap cannot allow a
+      // fast shard to jump through a block or the player between endpoints.
+      for (let i = 1; i <= steps; i++) {
+        const t = i / steps;
+        const sx = projectile.x + dx * t;
+        const sy = projectile.y + dy * t;
+        const sz = projectile.z + dz * t;
+
+        if (this._world.isSolid(Math.floor(sx), Math.floor(sy), Math.floor(sz))) {
+          this._killProjectile(projectile);
+          collided = true;
+          break;
+        }
+
+        const pdx = Math.abs(player.x - sx);
+        const pdy = (player.y + 0.9) - sy;
+        const pdz = Math.abs(player.z - sz);
+        if (pdx < 0.4 && pdy > -0.2 && pdy < 1.8 && pdz < 0.4) {
+          player._takeDamage(4);
+          player.knockback(projectile.x, projectile.z);
+          this._killProjectile(projectile);
+          collided = true;
+          break;
+        }
       }
 
-      const pdx = Math.abs(player.x - nx);
-      const pdy = (player.y + 0.9) - ny;
-      const pdz = Math.abs(player.z - nz);
-      if (pdx < 0.4 && pdy > -0.2 && pdy < 1.8 && pdz < 0.4) {
-        player._takeDamage(4);
-        player.knockback(projectile.x, projectile.z);
-        this._killProjectile(projectile); continue;
-      }
+      if (collided) continue;
 
       projectile.x = nx; projectile.y = ny; projectile.z = nz;
       projectile.mesh.position.set(projectile.x, projectile.y, projectile.z);
@@ -485,9 +526,10 @@ export class MobSystem {
   }
 
   _killProjectile(projectile) {
+    if (!projectile || projectile.dead) return;
     projectile.dead = true;
     this._scene.remove(projectile.mesh);
-    projectile.mesh.geometry.dispose();
+    projectile.mesh?.geometry?.dispose?.();
   }
 
   // ─── Explosion ────────────────────────────────────────────────────────────
@@ -550,8 +592,9 @@ export class MobSystem {
 
   _isInSunlight(mob) {
     const bx = Math.floor(mob.x), bz = Math.floor(mob.z);
-    for (let dy = 1; dy <= 8; dy++) {
-      if (this._world.isSolid(bx, Math.floor(mob.y + MOB_H) + dy, bz)) return false;
+    const startY = Math.max(0, Math.floor(mob.y + MOB_H) + 1);
+    for (let y = startY; y < CHUNK_HEIGHT; y++) {
+      if (this._world.isSolid(bx, y, bz)) return false;
     }
     return true;
   }
@@ -589,9 +632,18 @@ export class MobSystem {
 
     this._scene.remove(mob.mesh);
     this._scene.remove(mob.hpBar);
-    mob.mesh.traverse(c => { if (c.isMesh) c.geometry?.dispose?.(); });
-    mob.hpBar.children.forEach(c => c.geometry?.dispose?.());
-    mob.hpBar._fg.material.dispose();
+
+    // Several mesh factories intentionally reuse one Geometry object for paired
+    // limbs. Dispose each unique geometry once rather than once per Mesh.
+    const geometries = new Set();
+    mob.mesh?.traverse?.(child => {
+      if (child.isMesh && child.geometry) geometries.add(child.geometry);
+    });
+    mob.hpBar?.children?.forEach(child => {
+      if (child.geometry) geometries.add(child.geometry);
+    });
+    for (const geometry of geometries) geometry.dispose?.();
+    mob.hpBar?._fg?.material?.dispose?.();
   }
 
   dispose() {

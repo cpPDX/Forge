@@ -138,10 +138,32 @@ test('Master Forge unlocks diamond refining and diamond equipment', () => {
   assert.deepEqual(forge.station(POS).output, { id: ITEMS.REFINED_DIAMOND, count: 1 });
 });
 
-test('forge equipment crafting rolls back when result cannot fit', () => {
+test('forge equipment crafting rolls back when result cannot fit after ingredients are consumed', () => {
   const forge = new ForgeSystem();
   const upgradeInventory = inventoryWith([[ITEMS.IRON_INGOT, 6], [B.COBBLESTONE, 4]]);
   forge.upgrade(POS, upgradeInventory);
+
+  const inventory = new Inventory();
+  for (const slot of inventory.allSlots()) {
+    slot.id = B.DIRT;
+    slot.count = MAX_STACK;
+  }
+  // Keep both ingredient stacks occupied after consuming the recipe so no slot
+  // becomes available for the forged tool.
+  inventory.hotbarSlot(0).id = ITEMS.IRON_INGOT;
+  inventory.hotbarSlot(0).count = MAX_STACK;
+  inventory.hotbarSlot(1).id = ITEMS.STICK;
+  inventory.hotbarSlot(1).count = MAX_STACK;
+
+  assert.equal(forge.craft(POS, 'iron-pickaxe', inventory), false);
+  assert.equal(inventory.countOf(ITEMS.IRON_INGOT), MAX_STACK);
+  assert.equal(inventory.countOf(ITEMS.STICK), MAX_STACK);
+  assert.equal(inventory.countOf(ITEMS.IRON_PICKAXE), 0);
+});
+
+test('forge crafting may use a slot freed by consumed ingredients', () => {
+  const forge = new ForgeSystem();
+  forge.upgrade(POS, inventoryWith([[ITEMS.IRON_INGOT, 6], [B.COBBLESTONE, 4]]));
 
   const inventory = new Inventory();
   for (const slot of inventory.allSlots()) {
@@ -153,10 +175,8 @@ test('forge equipment crafting rolls back when result cannot fit', () => {
   inventory.hotbarSlot(1).id = ITEMS.STICK;
   inventory.hotbarSlot(1).count = 2;
 
-  assert.equal(forge.craft(POS, 'iron-pickaxe', inventory), false);
-  assert.equal(inventory.countOf(ITEMS.IRON_INGOT), 3);
-  assert.equal(inventory.countOf(ITEMS.STICK), 2);
-  assert.equal(inventory.countOf(ITEMS.IRON_PICKAXE), 0);
+  assert.equal(forge.craft(POS, 'iron-pickaxe', inventory), true);
+  assert.equal(inventory.countOf(ITEMS.IRON_PICKAXE), 1);
 });
 
 test('forge tier and partial processing round-trip through save/load', () => {
@@ -191,10 +211,34 @@ test('loading forge state ignores stations whose world block was removed', () =>
   assert.deepEqual(restored.serialize(), { stations: {} });
 });
 
-test('removing a station clears its persisted progression state', () => {
+test('breaking a running forge salvages committed input and fuel', () => {
+  const forge = new ForgeSystem();
+  const inventory = inventoryWith([[B.IRON_ORE, 1], [B.COAL_ORE, 1]]);
+  assert.equal(forge.startRefining(POS, 'iron', inventory), true);
+  forge.update(2);
+
+  const salvage = forge.removeStation(POS);
+  assert.deepEqual(salvage.sort((a, b) => a.id - b.id), [
+    { id: B.COAL_ORE, count: 1 },
+    { id: B.IRON_ORE, count: 1 },
+  ].sort((a, b) => a.id - b.id));
+  assert.deepEqual(forge.serialize(), { stations: {} });
+});
+
+test('breaking a forge with completed output salvages the output', () => {
+  const forge = new ForgeSystem();
+  const inventory = inventoryWith([[B.IRON_ORE, 1], [B.COAL_ORE, 1]]);
+  forge.startRefining(POS, 'iron', inventory);
+  forge.update(4);
+
+  assert.deepEqual(forge.removeStation(POS), [{ id: ITEMS.IRON_INGOT, count: 1 }]);
+  assert.deepEqual(forge.serialize(), { stations: {} });
+});
+
+test('removing an empty station clears its persisted progression state without salvage', () => {
   const forge = new ForgeSystem();
   forge.ensureStation(POS);
-  assert.equal(forge.removeStation(POS), true);
+  assert.deepEqual(forge.removeStation(POS), []);
   assert.deepEqual(forge.serialize(), { stations: {} });
 });
 

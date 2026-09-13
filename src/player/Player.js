@@ -227,31 +227,16 @@ export class Player {
   _handleBreak(dt, input, mobSystem) {
     if (!input.locked) return;
 
-    // One-shot: try mob hit first, then block break
-    if (input.breakOnce) {
-      if (this._attack(mobSystem)) return;
-      if (this.targeted) {
-        const [bx, by, bz] = this.targeted.pos;
-        const id = this._world.getBlock(bx, by, bz);
-        const def = BlockRegistry.get(id);
-        this._world.setBlock(bx, by, bz, B.AIR);
-        if (def?.drops != null) {
-          if (!def.dropChance || Math.random() < def.dropChance) {
-            if (this.onDropItem) {
-              this.onDropItem(bx + 0.5, by + 0.5, bz + 0.5, def.drops, 1);
-            } else if (this.inventory) {
-              this.inventory.addItem(def.drops, 1);
-            }
-          }
-        }
-        this.breakProgress = 0;
-        this._breakTarget = null;
-      }
+    // A fresh press is a one-shot attack against mobs. If no mob is hit,
+    // the same press participates in the normal hardness-aware mining path.
+    if (input.breakOnce && this._attack(mobSystem)) {
+      this.breakProgress = 0;
+      this._breakTarget = null;
       return;
     }
 
-    // Hold-to-break
-    if (input.break && this.targeted) {
+    const miningActive = input.break || input.breakOnce;
+    if (miningActive && this.targeted) {
       const t = this.targeted.pos;
       const same = this._breakTarget && this._breakTarget[0] === t[0]
                 && this._breakTarget[1] === t[1] && this._breakTarget[2] === t[2];
@@ -259,7 +244,10 @@ export class Player {
 
       const id   = this._world.getBlock(t[0], t[1], t[2]);
       const hard = BlockRegistry.hardness(id);
-      if (hard < 0) return; // unbreakable
+      if (hard < 0) {
+        this.breakProgress = 0;
+        return; // unbreakable through every break input path
+      }
 
       const heldSlot = this.inventory?.hotbarSlot(this.inventory.selectedSlot);
       const heldTool = heldSlot ? ItemRegistry.get(heldSlot.id) : null;

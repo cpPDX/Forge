@@ -109,19 +109,21 @@ function countOreInNearbyChunks(world, blockId, radiusChunks) {
   return count;
 }
 
-test('fixed-seed nearby underground contains enough ore for the minimum forge arc', () => {
+test('fixed-seed nearby underground contains headroom for the complete Forgebrand arc', () => {
   const world = new World(12345);
   const radius = 2; // 5×5 chunks, roughly an 80×80 block search footprint.
   const iron = countOreInNearbyChunks(world, B.IRON_ORE, radius);
   const gold = countOreInNearbyChunks(world, B.GOLD_ORE, radius);
   const diamond = countOreInNearbyChunks(world, B.DIAMOND_ORE, radius);
 
-  // Minimum path consumes 13 iron (Iron Forge + Iron Pickaxe + Master upgrade),
-  // 4 gold, and 2 raw diamond. Leave headroom so the first useful craft does
-  // not require finding nearly every vein in the local search footprint.
-  assert.ok(iron >= 20, `expected >=20 nearby Iron Ore, found ${iron}`);
-  assert.ok(gold >= 8, `expected >=8 nearby Gold Ore, found ${gold}`);
-  assert.ok(diamond >= 4, `expected >=4 nearby Diamond Ore, found ${diamond}`);
+  // Minimum post-#27 route consumes 15 iron (Iron Forge + Iron Pickaxe +
+  // Master upgrade + Forgebrand), 6 gold (Master upgrade + Forgebrand), and
+  // 4 raw diamond (2 for the Master upgrade + 2 refined for Forgebrand).
+  // Require additional local headroom so the finale does not depend on finding
+  // essentially every relevant vein in the initial search footprint.
+  assert.ok(iron >= 20, `expected >=20 nearby Iron Ore for a 15-ore route, found ${iron}`);
+  assert.ok(gold >= 8, `expected >=8 nearby Gold Ore for a 6-ore route, found ${gold}`);
+  assert.ok(diamond >= 6, `expected >=6 nearby Diamond Ore for a 4-ore route, found ${diamond}`);
 });
 
 test('ore depth bands match the player-facing progression leads', () => {

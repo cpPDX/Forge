@@ -105,6 +105,7 @@ export class ForgeController {
   open(pos) {
     this._currentPos = pos.slice();
     this._system.ensureStation(this._currentPos);
+    this._game._firstSessionController?.onForgeEstablished?.();
     this._view.open();
     this._render();
     this._releasePointerForUi();
@@ -190,8 +191,6 @@ export class ForgeController {
         id: option.id,
         name: option.name,
         ingredients: option.ingredients.map(item => `${item.count}× ${this._name(item.id)}`).join(' + '),
-        // Ingredient consumption can free the slot needed for the result, so the
-        // system remains the authority on final capacity after consumption.
         enabled: option.ingredients.every(item => inventory.countOf(item.id) >= item.count),
       })),
       upgrade: upgrade ? {

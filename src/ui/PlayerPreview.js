@@ -5,7 +5,7 @@ export class PlayerPreview {
     if (!canvas) return;
     this._canvas = canvas;
     this._renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: false });
-    this._renderer.setSize(64, 96, false); // false = don't override CSS with inline styles
+    this._renderer.setSize(64, 96, false);
     this._renderer.setClearColor(0x000000, 0);
 
     this._scene  = new THREE.Scene();
@@ -14,7 +14,7 @@ export class PlayerPreview {
     this._camera.lookAt(0, 1.0, 0);
 
     this._scene.add(new THREE.AmbientLight(0xffffff, 0.7));
-    const sun = new THREE.DirectionalLight(0xfff8e0, 0.8);
+    const sun = new THREE.DirectionalLight(0xfff0d8, 0.9);
     sun.position.set(1, 2, 2);
     this._scene.add(sun);
 
@@ -32,78 +32,49 @@ export class PlayerPreview {
   }
 
   _buildPlayerMesh() {
-    const SKIN = 0xc8a070;
-    const SHIRT= 0x3daaaa;
-    const PANT = 0x22449a;
-    const SHOE = 0x553322;
+    const SKIN    = 0xb9825f;
+    const HAIR    = 0x241d1a;
+    const SHIRT   = 0x343638;
+    const APRON   = 0x70472d;
+    const LEATHER = 0x4c3022;
+    const SCARF   = 0xb84f24;
+    const PANT    = 0x252b2e;
+    const BOOT    = 0x241b18;
+    const EYE     = 0x171717;
 
     this._group = new THREE.Group();
 
-    // head with Steve face texture on front
-    const headGeo = new THREE.BoxGeometry(0.5, 0.5, 0.5);
-    const headFaceTex = this._makeSteveFaceTex();
-    const skinMat = new THREE.MeshLambertMaterial({ color: SKIN });
-    const headMats = [skinMat, skinMat, skinMat, skinMat,
-      new THREE.MeshLambertMaterial({ map: headFaceTex }), skinMat];
-    const head = new THREE.Mesh(headGeo, headMats);
-    head.position.set(0, 1.75, 0);
-    this._group.add(head);
+    // Frontier-smith head: simple face, heavy hair cap, no borrowed character texture.
+    this._group.add(this._box(0.48, 0.48, 0.46, SKIN, 0, 1.78, 0));
+    this._group.add(this._box(0.50, 0.16, 0.48, HAIR, 0, 1.99, -0.01));
+    this._group.add(this._box(0.10, 0.14, 0.03, HAIR, -0.18, 1.88, 0.235));
+    this._group.add(this._box(0.06, 0.045, 0.025, EYE, -0.11, 1.80, 0.245));
+    this._group.add(this._box(0.06, 0.045, 0.025, EYE,  0.11, 1.80, 0.245));
+    this._group.add(this._box(0.07, 0.08, 0.035, 0x9d6649, 0, 1.72, 0.245));
 
-    // torso
-    this._group.add(this._box(0.5, 0.75, 0.25, SHIRT, 0, 1.125, 0));
+    // Rust-colored neckerchief makes the player read as Forge even at thumbnail size.
+    this._group.add(this._box(0.44, 0.13, 0.30, SCARF, 0, 1.48, 0.015));
 
-    // arms
-    this._leftArm  = this._box(0.25, 0.65, 0.25, SKIN,  0.375, 1.15, 0);
-    this._rightArm = this._box(0.25, 0.65, 0.25, SKIN, -0.375, 1.15, 0);
+    // Work shirt and leather apron.
+    this._group.add(this._box(0.54, 0.74, 0.28, SHIRT, 0, 1.10, 0));
+    this._group.add(this._box(0.39, 0.62, 0.055, APRON, 0, 1.06, 0.17));
+    this._group.add(this._box(0.44, 0.07, 0.055, LEATHER, 0, 1.26, 0.18));
+
+    // Sleeved arms with leather bracers/gloves.
+    this._leftArm  = this._box(0.23, 0.62, 0.23, SHIRT,  0.385, 1.13, 0);
+    this._rightArm = this._box(0.23, 0.62, 0.23, SHIRT, -0.385, 1.13, 0);
     this._group.add(this._leftArm, this._rightArm);
+    this._group.add(this._box(0.245, 0.18, 0.245, LEATHER,  0.385, 0.86, 0));
+    this._group.add(this._box(0.245, 0.18, 0.245, LEATHER, -0.385, 0.86, 0));
 
-    // legs
-    this._leftLeg  = this._box(0.25, 0.75, 0.25, PANT,  0.125, 0.375, 0);
-    this._rightLeg = this._box(0.25, 0.75, 0.25, PANT, -0.125, 0.375, 0);
+    // Work trousers and heavy boots.
+    this._leftLeg  = this._box(0.24, 0.72, 0.25, PANT,  0.13, 0.37, 0);
+    this._rightLeg = this._box(0.24, 0.72, 0.25, PANT, -0.13, 0.37, 0);
     this._group.add(this._leftLeg, this._rightLeg);
-
-    // feet
-    this._group.add(this._box(0.25, 0.12, 0.3, SHOE,  0.125, 0.06, 0.025));
-    this._group.add(this._box(0.25, 0.12, 0.3, SHOE, -0.125, 0.06, 0.025));
+    this._group.add(this._box(0.26, 0.14, 0.34, BOOT,  0.13, 0.07, 0.035));
+    this._group.add(this._box(0.26, 0.14, 0.34, BOOT, -0.13, 0.07, 0.035));
 
     this._scene.add(this._group);
-  }
-
-  _makeSteveFaceTex() {
-    const c   = document.createElement('canvas');
-    c.width   = 16; c.height = 16;
-    const ctx = c.getContext('2d');
-
-    ctx.fillStyle = '#c8a070';
-    ctx.fillRect(0, 0, 16, 16);
-
-    // eyes
-    ctx.fillStyle = '#3d2b1e';
-    ctx.fillRect(3, 5, 3, 2);
-    ctx.fillRect(10, 5, 3, 2);
-    // whites
-    ctx.fillStyle = '#eeeecc';
-    ctx.fillRect(4, 5, 2, 2);
-    ctx.fillRect(11, 5, 2, 2);
-    // pupils
-    ctx.fillStyle = '#111111';
-    ctx.fillRect(5, 6, 1, 1);
-    ctx.fillRect(12, 6, 1, 1);
-
-    // nose
-    ctx.fillStyle = '#b07850';
-    ctx.fillRect(7, 7, 2, 2);
-
-    // mouth
-    ctx.fillStyle = '#6a3a2a';
-    ctx.fillRect(5, 10, 6, 1);
-    ctx.fillRect(5, 11, 1, 1);
-    ctx.fillRect(10, 11, 1, 1);
-
-    const tex = new THREE.CanvasTexture(c);
-    tex.magFilter = THREE.NearestFilter;
-    tex.minFilter = THREE.NearestFilter;
-    return tex;
   }
 
   start() {
@@ -112,7 +83,6 @@ export class PlayerPreview {
       this._raf = requestAnimationFrame(loop);
       this._t += 0.016;
       this._group.rotation.y = Math.sin(this._t * 0.5) * 0.4 + 0.3;
-      // subtle idle arm swing
       const swing = Math.sin(this._t * 1.2) * 0.15;
       this._leftArm.rotation.x  =  swing;
       this._rightArm.rotation.x = -swing;

@@ -53,7 +53,6 @@ test('drop rolls are deterministic at tested boundaries and return detached stac
   assert.notEqual(first, second);
 
   assert.equal(rollEnemyDrop(ENEMY_TYPES.ASHBOUND, 0.35), null);
-  assert.equal(rollEnemyDrop(ENEMY_TYPES.SHARDCASTER, 0.499), B.COBBLESTONE ? null : null);
   assert.deepEqual(rollEnemyDrop(ENEMY_TYPES.SHARDCASTER, 0.499), { id: B.COBBLESTONE, count: 1 });
   assert.equal(rollEnemyDrop(ENEMY_TYPES.SLAGBURST, 0.75), null);
   assert.equal(rollEnemyDrop('unknown', 0), null);

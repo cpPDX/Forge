@@ -3,6 +3,7 @@ import { FirstSessionController } from './systems/FirstSessionController.js';
 import { ForgeController } from './systems/ForgeController.js';
 import { ResourceProgressionController } from './systems/ResourceProgressionController.js';
 import { NightPressureController } from './systems/NightPressureController.js';
+import { FinaleController } from './systems/FinaleController.js';
 
 const canvas = document.getElementById('game-canvas');
 
@@ -10,9 +11,10 @@ try {
   const game = new Game(canvas);
   game._mobs.onDropItem = (x, y, z, id, count) => game._drops.spawn(x, y, z, id, count);
   new FirstSessionController(game).init();
-  new ForgeController(game).init();
+  const forgeController = new ForgeController(game).init();
   new ResourceProgressionController(game).init();
-  new NightPressureController(game).init();
+  const nightPressureController = new NightPressureController(game).init();
+  new FinaleController(game, { forgeController, nightPressureController }).init();
   game.start();
 } catch (err) {
   const el = document.createElement('div');

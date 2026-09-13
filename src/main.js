@@ -2,6 +2,7 @@ import { Game } from './game/Game.js';
 import { FirstSessionController } from './systems/FirstSessionController.js';
 import { ForgeController } from './systems/ForgeController.js';
 import { ResourceProgressionController } from './systems/ResourceProgressionController.js';
+import { NightPressureController } from './systems/NightPressureController.js';
 
 const canvas = document.getElementById('game-canvas');
 
@@ -10,6 +11,7 @@ try {
   new FirstSessionController(game).init();
   new ForgeController(game).init();
   new ResourceProgressionController(game).init();
+  new NightPressureController(game).init();
   game.start();
 } catch (err) {
   const el = document.createElement('div');

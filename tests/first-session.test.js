@@ -58,31 +58,15 @@ test('first-session fundamentals require move, look, and jump before gathering',
   const guide = new FirstSessionGuide();
   const inventory = new Inventory();
 
-  guide.update({
-    input: input({ forward: true, jump: false }),
-    inventory,
-    inventoryOpen: false,
-    isDay: true,
-  });
-  guide.update({
-    input: input({ yaw: 0.1 }),
-    inventory,
-    inventoryOpen: false,
-    isDay: true,
-  });
-
+  guide.update({ input: input({ forward: true }), inventory, inventoryOpen: false, isDay: true });
+  guide.update({ input: input({ yaw: 0.1 }), inventory, inventoryOpen: false, isDay: true });
   assert.equal(guide.step, 'bearings', 'jump is a demonstrated fundamental, not decorative progress');
 
-  guide.update({
-    input: input({ jump: true, yaw: 0.1 }),
-    inventory,
-    inventoryOpen: false,
-    isDay: true,
-  });
+  guide.update({ input: input({ jump: true, yaw: 0.1 }), inventory, inventoryOpen: false, isDay: true });
   assert.equal(guide.step, 'wood');
 });
 
-test('first-session progression reaches the forge goal through real inventory state', () => {
+test('first-session progression reaches an explicit Stone Forge goal', () => {
   const guide = new FirstSessionGuide();
   const inventory = new Inventory();
 
@@ -93,7 +77,23 @@ test('first-session progression reaches the forge goal through real inventory st
   assert.equal(guide.step, 'prepare');
   assert.equal(guide.fundamentalsComplete, true);
   assert.equal(guide.allowsHostiles, true);
-  assert.match(guide.view(false, inventory).progress, /first forge/i);
+  const view = guide.view(false, inventory);
+  assert.match(view.title, /forge/i);
+  assert.match(view.progress, /8 Cobblestone/i);
+});
+
+test('opening the first forge completes contextual onboarding and removes its HUD goal', () => {
+  const guide = new FirstSessionGuide();
+  const inventory = new Inventory();
+  advanceToPlacement(guide, inventory, { isDay: true });
+  guide.onBlockPlaced();
+  guide.update({ inventory, inventoryOpen: false, isDay: true });
+
+  assert.equal(guide.markForgeEstablished(), true);
+  assert.equal(guide.step, 'complete');
+  assert.equal(guide.fundamentalsComplete, true);
+  assert.equal(guide.view(false, inventory), null);
+  assert.equal(guide.markForgeEstablished(), false, 'forge completion should be idempotent');
 });
 
 test('finishing fundamentals after dark stays safe until daylight before hostiles unlock', () => {
@@ -106,10 +106,24 @@ test('finishing fundamentals after dark stays safe until daylight before hostile
 
   assert.equal(guide.step, 'prepare');
   assert.equal(guide.allowsHostiles, false);
-  assert.match(guide.view(false, inventory).hint, /quiet night/i);
+  assert.match(guide.view(false, inventory).hint, /quiet/i);
 
   guide.update({ inventory, inventoryOpen: false, isDay: true });
   assert.equal(guide.allowsHostiles, true, 'daylight arms the following night instead of spawning danger immediately');
+});
+
+test('night grace survives transitioning from the forge goal to completed onboarding', () => {
+  const guide = new FirstSessionGuide();
+  const inventory = new Inventory();
+  advanceToPlacement(guide, inventory, { isDay: false });
+  guide.onBlockPlaced();
+  guide.update({ inventory, inventoryOpen: false, isDay: false });
+  guide.markForgeEstablished();
+
+  assert.equal(guide.step, 'complete');
+  assert.equal(guide.allowsHostiles, false);
+  guide.update({ inventory, inventoryOpen: false, isDay: true });
+  assert.equal(guide.allowsHostiles, true);
 });
 
 test('first-session state round-trips without replaying completed mechanics', () => {
@@ -118,21 +132,24 @@ test('first-session state round-trips without replaying completed mechanics', ()
   advanceToPlacement(original, inventory, { isDay: true });
   original.onBlockPlaced();
   original.update({ inventory, inventoryOpen: false, isDay: true });
+  original.markForgeEstablished();
 
   const restored = new FirstSessionGuide();
   assert.equal(restored.load(original.serialize()), true);
-  assert.equal(restored.step, 'prepare');
+  assert.equal(restored.step, 'complete');
   assert.equal(restored.allowsHostiles, true);
   assert.equal(restored.serialize().placedBlocks, 1);
+  assert.equal(restored.view(false, inventory), null);
 });
 
 test('returning players skip first-time mechanics and retain normal hostile behavior', () => {
   const guide = new FirstSessionGuide();
   guide.markReturningPlayer();
 
-  assert.equal(guide.step, 'prepare');
+  assert.equal(guide.step, 'complete');
   assert.equal(guide.fundamentalsComplete, true);
   assert.equal(guide.allowsHostiles, true);
+  assert.equal(guide.view(false, new Inventory()), null);
 });
 
 test('fixed seed chooses a resource-bearing spawn with nearby natural wood', () => {

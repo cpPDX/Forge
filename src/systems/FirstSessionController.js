@@ -20,17 +20,15 @@ export class FirstSessionController {
     if (saved?.firstSession) {
       if (!this._guide.load(saved.firstSession)) this._guide.markReturningPlayer();
     } else if (saved) {
-      // Existing pre-0.3 saves should not be forced through first-time guidance.
       this._guide.markReturningPlayer();
     } else {
-      // The old starter kit skipped most of the actual progression loop. A fresh
-      // run now begins empty-handed so gathering and crafting teach real systems.
       this._game._inventory.load({
         selectedSlot: 0,
         slots: Array.from({ length: INVENTORY_SLOT_COUNT }, () => [B.AIR, 0]),
       });
     }
 
+    this._game._firstSessionController = this;
     this._wrapSaveState();
     this._wrapControls();
     this._wrapHostileSpawning();
@@ -39,6 +37,13 @@ export class FirstSessionController {
     this._configureStartOverlay();
     this._render();
     return this;
+  }
+
+  onForgeEstablished() {
+    if (!this._guide.markForgeEstablished()) return false;
+    this._render();
+    this._persistProgress();
+    return true;
   }
 
   _wrapSaveState() {
@@ -103,8 +108,6 @@ export class FirstSessionController {
         isDay: this._game._time.isDay,
       });
       this._render();
-      // Placement itself is onboarding state even if it occurred before the
-      // explicit placement step, so preserve it immediately.
       this._persistProgress();
       if (changed) this._render();
     };
@@ -124,8 +127,6 @@ export class FirstSessionController {
   }
 
   _configureInventoryUI() {
-    // Armor is not implemented yet; showing dead equipment slots teaches a
-    // system that does not exist and wastes scarce mobile inventory space.
     const armor = document.getElementById('inv-armor');
     if (armor) armor.style.display = 'none';
 
@@ -150,6 +151,7 @@ export class FirstSessionController {
       '<div>1 Log → 4 Planks</div>',
       '<div>2 Planks → 4 Sticks</div>',
       '<div>3 Planks + 2 Sticks → Wooden Pickaxe</div>',
+      '<div>8 Cobblestone → Stone Forge</div>',
     ].join('');
     craftArea.appendChild(recipes);
   }

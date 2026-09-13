@@ -14,22 +14,22 @@ export class Controls {
     this._locked = false;
 
     // One-shot flags
-    this._jumpQueued      = false;
-    this._breakQueued     = false;
-    this._placeQueued     = false;
-    this._inventoryQueued = false;
+    this._jumpQueued       = false;
+    this._breakQueued      = false;
+    this._placeQueued      = false;
+    this._inventoryQueued  = false;
     this._flashlightQueued = false;
-    this._scrollDelta     = 0;
-    this._hotbarSelect    = -1;
-    this._mouseBreakHeld  = false;
+    this._scrollDelta      = 0;
+    this._hotbarSelect     = -1;
+    this._mouseBreakHeld   = false;
 
     // Touch state
-    this._joyId    = null;
-    this._joyBaseX = 0;
-    this._joyBaseY = 0;
-    this._joyDX    = 0;
-    this._joyDY    = 0;
-    this._lookId   = null;
+    this._joyId     = null;
+    this._joyBaseX  = 0;
+    this._joyBaseY  = 0;
+    this._joyDX     = 0;
+    this._joyDY     = 0;
+    this._lookId    = null;
     this._lookLastX = 0;
     this._lookLastY = 0;
     this._touchBreak = false;
@@ -40,6 +40,37 @@ export class Controls {
     this._bindMouse();
     this._bindTouch();
     this._bindButtons();
+    this._bindInterruptions();
+  }
+
+  _resetInputState() {
+    this._keys = {};
+    this._jumpQueued       = false;
+    this._breakQueued      = false;
+    this._placeQueued      = false;
+    this._inventoryQueued  = false;
+    this._flashlightQueued = false;
+    this._scrollDelta      = 0;
+    this._hotbarSelect     = -1;
+    this._mouseBreakHeld   = false;
+    this._touchBreak       = false;
+    this._touchPlace       = false;
+    this._joyId            = null;
+    this._lookId           = null;
+    this._joyDX            = 0;
+    this._joyDY            = 0;
+
+    const joyBase = document.getElementById('joy-base');
+    const joyKnob = document.getElementById('joy-knob');
+    if (joyBase) joyBase.style.display = 'none';
+    if (joyKnob) joyKnob.style.display = 'none';
+  }
+
+  _bindInterruptions() {
+    window.addEventListener('blur', () => this._resetInputState());
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) this._resetInputState();
+    });
   }
 
   // ─── Keyboard ─────────────────────────────────────────────────────────────
@@ -47,9 +78,19 @@ export class Controls {
   _bindKeyboard() {
     window.addEventListener('keydown', e => {
       this._keys[e.code] = true;
-      if (e.code === 'Space')   { e.preventDefault(); this._jumpQueued = true; }
-      if (e.code === 'KeyE')    this._inventoryQueued = true;
-      if (e.code === 'KeyF')    this._flashlightQueued = true;
+      const isRepeat = e.repeat === true;
+
+      if (e.code === 'Space') {
+        e.preventDefault();
+        if (!isRepeat) this._jumpQueued = true;
+      }
+
+      // One-shot actions must fire once per physical key press, not once for
+      // every browser-generated key-repeat event while the key is held.
+      if (isRepeat) return;
+
+      if (e.code === 'KeyE') this._inventoryQueued = true;
+      if (e.code === 'KeyF') this._flashlightQueued = true;
       if (e.code >= 'Digit1' && e.code <= 'Digit9')
         this._hotbarSelect = parseInt(e.code.slice(5)) - 1;
       if (e.code === 'F3') {
@@ -64,8 +105,10 @@ export class Controls {
 
   _bindMouse() {
     document.addEventListener('pointerlockchange', () => {
+      const wasLocked = this._locked;
       this._locked = document.pointerLockElement === this._canvas;
-      document.getElementById('click-to-play').classList.toggle('hidden', this._locked);
+      document.getElementById('click-to-play')?.classList.toggle('hidden', this._locked);
+      if (wasLocked && !this._locked) this._resetInputState();
     });
     document.addEventListener('mousemove', e => {
       if (!this._locked) return;
@@ -194,7 +237,11 @@ export class Controls {
       const el = document.getElementById(id);
       if (!el) return;
       el.addEventListener('touchstart', e => { e.preventDefault(); downFn(); }, { passive: false });
-      if (upFn) el.addEventListener('touchend', e => { e.preventDefault(); upFn(); }, { passive: false });
+      if (upFn) {
+        const release = e => { e.preventDefault(); upFn(); };
+        el.addEventListener('touchend', release, { passive: false });
+        el.addEventListener('touchcancel', release, { passive: false });
+      }
     };
     on('btn-jump',       () => { this._jumpQueued = true; });
     on('btn-break',      () => { this._touchBreak = true; this._breakQueued = true; }, () => { this._touchBreak = false; });

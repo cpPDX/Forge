@@ -35,8 +35,8 @@ export class World {
     this._caveN     = makeFBM3D(s ^ 0x5678, 3);
     this._caveN2    = makeFBM3D(s ^ 0x9012, 3);
     this._oreN      = makeFBM2D(s ^ 0x3456, 2);
-    this._featRng   = rngSeed(s ^ 0x7890);
     this._surfCache = new Map();
+    this._spawnCache = null;
   }
 
   // ─── Chunk key & storage ─────────────────────────────────────────────────
@@ -202,7 +202,7 @@ export class World {
     this.loadLegacyChunks({ [this._key(cx, cz)]: data });
   }
 
-  // ─── Surface height ───────────────────────────────────────────────────────
+  // ─── Surface height / spawn ───────────────────────────────────────────────
 
   surfaceAt(x, z) {
     const k = `${x},${z}`;
@@ -231,9 +231,58 @@ export class World {
     return 'mountains';
   }
 
+  _spawnCandidate(x, z) {
+    const biome = this._biomeAt(x, z);
+    if (biome !== 'forest' && biome !== 'mountains') return null;
+
+    const heights = [
+      this.surfaceAt(x, z),
+      this.surfaceAt(x + 1, z),
+      this.surfaceAt(x - 1, z),
+      this.surfaceAt(x, z + 1),
+      this.surfaceAt(x, z - 1),
+    ];
+    if (Math.max(...heights) - Math.min(...heights) > 3) return null;
+    return { x, z, y: heights[0] };
+  }
+
   spawnPoint() {
+    if (this._spawnCache) return { ...this._spawnCache };
+
+    // The fixed seed's origin is desert and can leave a new player far from wood.
+    // Search outward for the nearest reasonably flat grass-bearing biome instead.
+    const maxRadius = 96;
+    const step = 4;
+    for (let radius = 0; radius <= maxRadius; radius += step) {
+      const candidates = [];
+      if (radius === 0) {
+        candidates.push([0, 0]);
+      } else {
+        for (let x = -radius; x <= radius; x += step) {
+          candidates.push([x, -radius], [x, radius]);
+        }
+        for (let z = -radius + step; z < radius; z += step) {
+          candidates.push([-radius, z], [radius, z]);
+        }
+      }
+
+      let best = null;
+      for (const [x, z] of candidates) {
+        const candidate = this._spawnCandidate(x, z);
+        if (!candidate) continue;
+        const dist2 = x*x + z*z;
+        if (!best || dist2 < best.dist2) best = { ...candidate, dist2 };
+      }
+      if (best) {
+        this._spawnCache = { x: best.x + 0.5, y: best.y + 2, z: best.z + 0.5 };
+        return { ...this._spawnCache };
+      }
+    }
+
+    // Defensive fallback if a future seed/world config has no suitable nearby biome.
     const sy = this.surfaceAt(0, 0);
-    return { x: 0.5, y: sy + 2, z: 0.5 };
+    this._spawnCache = { x: 0.5, y: sy + 2, z: 0.5 };
+    return { ...this._spawnCache };
   }
 
   // ─── Chunk generation ─────────────────────────────────────────────────────
@@ -266,10 +315,6 @@ export class World {
         const top   = data[this._idx(lx, surf, lz)];
         if (top === B.GRASS && rng() < 0.03) {
           this._placeTree(data, lx, surf + 1, lz, bx0, bz0, biome, rng);
-        }
-        if (top === B.GRASS && rng() < 0.008) {
-          // Crafting table on surface for starter
-          if (surf + 1 < CHUNK_HEIGHT) data[this._idx(lx, surf+1, lz)] = B.CRAFTING_TABLE;
         }
       }
     }

@@ -140,6 +140,15 @@ function consumeIngredients(inventory, ingredients) {
   return true;
 }
 
+function mergeSalvage(stacks) {
+  const totals = new Map();
+  for (const stack of stacks) {
+    if (!stack || stack.count <= 0) continue;
+    totals.set(stack.id, (totals.get(stack.id) ?? 0) + stack.count);
+  }
+  return [...totals.entries()].map(([id, count]) => ({ id, count }));
+}
+
 export class ForgeSystem {
   constructor() {
     this._stations = new Map();
@@ -217,8 +226,7 @@ export class ForgeSystem {
       return false;
     }
 
-    const costs = [recipe.input, recipe.fuel];
-    if (!consumeIngredients(inventory, costs)) return false;
+    if (!consumeIngredients(inventory, [recipe.input, recipe.fuel])) return false;
 
     state.job = {
       recipeId: recipe.id,
@@ -277,7 +285,19 @@ export class ForgeSystem {
   }
 
   removeStation(pos) {
-    return this._stations.delete(stationKey(pos));
+    const key = stationKey(pos);
+    const state = this._stations.get(key);
+    if (!state) return [];
+
+    const salvage = [];
+    if (state.output) salvage.push({ ...state.output });
+    if (state.job) {
+      const recipe = REFINE_BY_ID.get(state.job.recipeId);
+      if (recipe) salvage.push({ ...recipe.input }, { ...recipe.fuel });
+    }
+
+    this._stations.delete(key);
+    return mergeSalvage(salvage);
   }
 
   serialize() {

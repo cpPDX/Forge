@@ -2,6 +2,7 @@ import { B } from '../utils/constants.js';
 
 const HOTBAR_SIZE = 9;
 const INV_SIZE    = 27;
+export const MAX_STACK = 64;
 
 export class Inventory {
   constructor() {
@@ -21,12 +22,26 @@ export class Inventory {
 
   // ─── Adding / removing ───────────────────────────────────────────────────
 
+  capacityFor(id) {
+    if (id === B.AIR) return 0;
+    let capacity = 0;
+    for (const s of this._slots) {
+      if (s.id === id && s.count > 0) capacity += Math.max(0, MAX_STACK - s.count);
+      else if (s.id === B.AIR || s.count === 0) capacity += MAX_STACK;
+    }
+    return capacity;
+  }
+
+  canAdd(id, count = 1) {
+    return Number.isInteger(count) && count >= 0 && this.capacityFor(id) >= count;
+  }
+
   addItem(id, count = 1) {
     if (id === B.AIR || count <= 0) return count;
     // Try stacking into existing slots
     for (const s of this._slots) {
-      if (s.id === id && s.count < 64) {
-        const take = Math.min(count, 64 - s.count);
+      if (s.id === id && s.count < MAX_STACK) {
+        const take = Math.min(count, MAX_STACK - s.count);
         s.count += take; count -= take;
         if (count === 0) return 0;
       }
@@ -34,7 +49,7 @@ export class Inventory {
     // Fill empty slots
     for (const s of this._slots) {
       if (s.id === B.AIR || s.count === 0) {
-        const take = Math.min(count, 64);
+        const take = Math.min(count, MAX_STACK);
         s.id = id; s.count = take; count -= take;
         if (count === 0) return 0;
       }
@@ -43,22 +58,27 @@ export class Inventory {
   }
 
   removeItem(id, count = 1) {
+    if (count <= 0) return true;
+    if (this.countOf(id) < count) return false;
+
+    let remaining = count;
     for (const s of this._slots) {
       if (s.id === id) {
-        const take = Math.min(count, s.count);
-        s.count -= take; count -= take;
+        const take = Math.min(remaining, s.count);
+        s.count -= take; remaining -= take;
         if (s.count === 0) s.id = B.AIR;
-        if (count === 0) return true;
+        if (remaining === 0) return true;
       }
     }
-    return false;
+    return true;
   }
 
   consumeSelected() {
     const s = this._slots[this.selectedSlot];
-    if (!s || s.count <= 0) return;
+    if (!s || s.count <= 0) return false;
     s.count--;
     if (s.count === 0) s.id = B.AIR;
+    return true;
   }
 
   countOf(id) {
@@ -83,6 +103,8 @@ export class Inventory {
   load(data) {
     if (!data) return;
     if (data.slots) {
+      // Reset first so restoring a snapshot cannot leave stale slot contents.
+      for (const slot of this._slots) { slot.id = B.AIR; slot.count = 0; }
       data.slots.forEach(([id, count], i) => {
         if (i < this._slots.length) { this._slots[i].id = id; this._slots[i].count = count; }
       });

@@ -14,6 +14,18 @@ function inventoryWith(items = []) {
   return inventory;
 }
 
+function upgradeToMaster(forge) {
+  assert.equal(forge.upgrade(POS, inventoryWith([
+    [ITEMS.IRON_INGOT, 6],
+    [B.COBBLESTONE, 4],
+  ])), true);
+  assert.equal(forge.upgrade(POS, inventoryWith([
+    [ITEMS.GOLD_INGOT, 4],
+    [ITEMS.IRON_INGOT, 4],
+    [B.DIAMOND_ORE, 2],
+  ])), true);
+}
+
 test('new forge stations begin at Stone tier with iron refining only', () => {
   const forge = new ForgeSystem();
   const station = forge.station(POS);
@@ -22,6 +34,8 @@ test('new forge stations begin at Stone tier with iron refining only', () => {
   assert.equal(station.tierName, 'Stone Forge');
   assert.deepEqual(forge.refiningOptions(POS).map(r => r.id), ['iron']);
   assert.deepEqual(forge.craftingOptions(POS), []);
+  assert.equal(forge.hasTier(FORGE_TIERS.IRON), false);
+  assert.equal(forge.hasTier(FORGE_TIERS.MASTER), false);
 });
 
 test('Stone Forge consumes exactly one iron ore and one coal and finishes after four seconds', () => {
@@ -92,6 +106,8 @@ test('Stone to Iron upgrade requires processed iron and is atomic', () => {
   assert.equal(enough.countOf(ITEMS.IRON_INGOT), 0);
   assert.equal(enough.countOf(B.COBBLESTONE), 0);
   assert.equal(forge.station(POS).tier, FORGE_TIERS.IRON);
+  assert.equal(forge.hasTier(FORGE_TIERS.IRON), true);
+  assert.equal(forge.hasTier(FORGE_TIERS.MASTER), false);
   assert.deepEqual(forge.refiningOptions(POS).map(r => r.id), ['iron', 'gold']);
   assert.deepEqual(forge.craftingOptions(POS).map(r => r.id), ['iron-pickaxe', 'iron-sword']);
 });
@@ -112,30 +128,56 @@ test('Iron Forge crafts equipment from ingots, never raw ore', () => {
   assert.equal(processed.countOf(ITEMS.IRON_PICKAXE), 1);
 });
 
-test('Master Forge unlocks diamond refining and diamond equipment', () => {
+test('Master Forge unlocks diamond refining and Forgebrand masterwork', () => {
   const forge = new ForgeSystem();
-  const firstUpgrade = inventoryWith([[ITEMS.IRON_INGOT, 6], [B.COBBLESTONE, 4]]);
-  assert.equal(forge.upgrade(POS, firstUpgrade), true);
+  upgradeToMaster(forge);
 
-  const secondUpgrade = inventoryWith([
-    [ITEMS.GOLD_INGOT, 4],
-    [ITEMS.IRON_INGOT, 4],
-    [B.DIAMOND_ORE, 2],
-  ]);
-  assert.equal(forge.upgrade(POS, secondUpgrade), true);
   assert.equal(forge.station(POS).tier, FORGE_TIERS.MASTER);
+  assert.equal(forge.hasTier(FORGE_TIERS.MASTER), true);
   assert.deepEqual(forge.refiningOptions(POS).map(r => r.id), ['iron', 'gold', 'diamond']);
   assert.deepEqual(forge.craftingOptions(POS).map(r => r.id), [
     'iron-pickaxe',
     'iron-sword',
     'diamond-pickaxe',
-    'diamond-sword',
+    'forgebrand',
   ]);
 
   const refineInventory = inventoryWith([[B.DIAMOND_ORE, 1], [B.COAL_ORE, 1]]);
   assert.equal(forge.startRefining(POS, 'diamond', refineInventory), true);
   forge.update(6);
   assert.deepEqual(forge.station(POS).output, { id: ITEMS.REFINED_DIAMOND, count: 1 });
+});
+
+test('Forgebrand requires the Master Forge and exact processed masterwork materials', () => {
+  const forge = new ForgeSystem();
+  const materials = [
+    [ITEMS.REFINED_DIAMOND, 2],
+    [ITEMS.GOLD_INGOT, 2],
+    [ITEMS.IRON_INGOT, 2],
+    [ITEMS.STICK, 1],
+  ];
+
+  const stoneInventory = inventoryWith(materials);
+  assert.equal(forge.craft(POS, 'forgebrand', stoneInventory), false);
+  assert.equal(stoneInventory.countOf(ITEMS.FORGEBRAND), 0);
+
+  upgradeToMaster(forge);
+  const incomplete = inventoryWith([
+    [ITEMS.REFINED_DIAMOND, 1],
+    [ITEMS.GOLD_INGOT, 2],
+    [ITEMS.IRON_INGOT, 2],
+    [ITEMS.STICK, 1],
+  ]);
+  assert.equal(forge.craft(POS, 'forgebrand', incomplete), false);
+  assert.equal(incomplete.countOf(ITEMS.GOLD_INGOT), 2);
+
+  const inventory = inventoryWith(materials);
+  assert.equal(forge.craft(POS, 'forgebrand', inventory), true);
+  assert.equal(inventory.countOf(ITEMS.REFINED_DIAMOND), 0);
+  assert.equal(inventory.countOf(ITEMS.GOLD_INGOT), 0);
+  assert.equal(inventory.countOf(ITEMS.IRON_INGOT), 0);
+  assert.equal(inventory.countOf(ITEMS.STICK), 0);
+  assert.equal(inventory.countOf(ITEMS.FORGEBRAND), 1);
 });
 
 test('forge equipment crafting rolls back when result cannot fit after ingredients are consumed', () => {
@@ -148,8 +190,6 @@ test('forge equipment crafting rolls back when result cannot fit after ingredien
     slot.id = B.DIRT;
     slot.count = MAX_STACK;
   }
-  // Keep both ingredient stacks occupied after consuming the recipe so no slot
-  // becomes available for the forged tool.
   inventory.hotbarSlot(0).id = ITEMS.IRON_INGOT;
   inventory.hotbarSlot(0).count = MAX_STACK;
   inventory.hotbarSlot(1).id = ITEMS.STICK;
@@ -193,6 +233,7 @@ test('forge tier and partial processing round-trip through save/load', () => {
 
   const station = restored.station(POS);
   assert.equal(station.tier, FORGE_TIERS.IRON);
+  assert.equal(restored.hasTier(FORGE_TIERS.IRON), true);
   assert.equal(station.job.recipeId, 'gold');
   assert.ok(Math.abs(station.job.progress - 2.25) < 0.000001);
 
@@ -248,7 +289,7 @@ test('hand crafting cannot produce advanced metal equipment from raw ore', () =>
     ITEMS.IRON_PICKAXE,
     ITEMS.IRON_SWORD,
     ITEMS.DIAMOND_PICKAXE,
-    ITEMS.DIAMOND_SWORD,
+    ITEMS.FORGEBRAND,
   ]);
 
   for (const recipe of crafting.allRecipes()) {

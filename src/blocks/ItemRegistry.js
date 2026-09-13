@@ -4,7 +4,7 @@ const DEFS = {
   [ITEMS.WOODEN_SWORD]:    { name: 'Wooden Sword',    damage: 4, reach: 3.0, color: '#c8a060' },
   [ITEMS.STONE_SWORD]:     { name: 'Stone Sword',     damage: 5, reach: 3.0, color: '#aaaaaa' },
   [ITEMS.IRON_SWORD]:      { name: 'Iron Sword',      damage: 6, reach: 3.5, color: '#d8e8f8' },
-  [ITEMS.DIAMOND_SWORD]:   { name: 'Diamond Sword',   damage: 7, reach: 3.5, color: '#44ddff' },
+  [ITEMS.FORGEBRAND]:      { name: 'Forgebrand',      damage: 9, reach: 4.0, color: '#ff7a2a' },
   [ITEMS.APPLE]:           { name: 'Apple',           edible: true, hungerRestore: 4, color: '#ff4444' },
   [ITEMS.STICK]:           { name: 'Stick',           color: '#a0702a' },
   [ITEMS.WOODEN_PICKAXE]:  { name: 'Wooden Pickaxe',  damage: 2, reach: 3.0, color: '#c8a060', tool: 'pickaxe', speed: 2.0 },

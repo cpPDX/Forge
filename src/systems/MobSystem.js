@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { GRAVITY, B } from '../utils/constants.js';
+import { ENEMY_TYPES, rollEnemyDrop } from './EnemyIdentity.js';
 
 const HALF_W = 0.3;
 const MOB_H  = 1.8;
@@ -19,7 +20,7 @@ function makeMob(x, y, z, type) {
     _sunBurnTimer: 0,
     _fuseTimer: 0,
     _fusing: false,
-    _arrowTimer: 0,
+    _shotTimer: 0,
   };
 }
 
@@ -29,146 +30,114 @@ export class MobSystem {
     this._world  = world;
     this._camera = camera;
     this._mobs   = [];
-    this._arrows = [];
+    this._projectiles = [];
     this._spawnTimer = 0;
     this._maxMobs = 15;
     this._spawnInterval = 3.5;
     this._spawnMinDist = 14;
     this._spawnMaxDist = 28;
-    this._typeWeights = { zombie: 0.5, skeleton: 0.3, creeper: 0.2 };
+    this._typeWeights = {
+      [ENEMY_TYPES.ASHBOUND]: 0.5,
+      [ENEMY_TYPES.SHARDCASTER]: 0.3,
+      [ENEMY_TYPES.SLAGBURST]: 0.2,
+    };
     this._lightSafeRadius = 0;
+    this.onDropItem = null;
 
-    // Zombie
-    this._matSkin   = new THREE.MeshLambertMaterial({ color: 0x7aaa6a });
-    this._matShirt  = new THREE.MeshLambertMaterial({ color: 0x2d6a44 });
-    this._matPants  = new THREE.MeshLambertMaterial({ color: 0x1a2a3a });
-    this._matEye    = new THREE.MeshLambertMaterial({ color: 0xff2200 });
-    // Creeper
-    this._matCreeper     = new THREE.MeshLambertMaterial({ color: 0x44aa44 });
-    this._matCreeperDark = new THREE.MeshLambertMaterial({ color: 0x111111 });
-    // Skeleton
-    this._matBone   = new THREE.MeshLambertMaterial({ color: 0xddddbb });
-    this._matBoneDark = new THREE.MeshLambertMaterial({ color: 0x222200 });
-    // Shared
-    this._matFlash  = new THREE.MeshLambertMaterial({ color: 0xffffff });
-    this._matHpBg   = new THREE.MeshBasicMaterial({ color: 0x440000 });
-    this._matHpFg   = new THREE.MeshBasicMaterial({ color: 0x00cc00 });
-    this._matArrow  = new THREE.MeshLambertMaterial({ color: 0xc8a060 });
+    // Ashbound — charred humanoid with visible ember fractures.
+    this._matAsh       = new THREE.MeshLambertMaterial({ color: 0x2a2523 });
+    this._matAshCloth  = new THREE.MeshLambertMaterial({ color: 0x513326 });
+    this._matAshDark   = new THREE.MeshLambertMaterial({ color: 0x171413 });
+    this._matEmber     = new THREE.MeshLambertMaterial({ color: 0xff6b22, emissive: 0x7a2200 });
+
+    // Shardcaster — faceted mineral body with a cold luminous core.
+    this._matShard     = new THREE.MeshLambertMaterial({ color: 0x647985 });
+    this._matShardDark = new THREE.MeshLambertMaterial({ color: 0x26343c });
+    this._matShardCore = new THREE.MeshLambertMaterial({ color: 0x8dd6df, emissive: 0x1a4f58 });
+
+    // Slagburst — squat volcanic mass with a hot unstable core.
+    this._matSlag      = new THREE.MeshLambertMaterial({ color: 0x3a312e });
+    this._matSlagDark  = new THREE.MeshLambertMaterial({ color: 0x1c1918 });
+    this._matSlagHot   = new THREE.MeshLambertMaterial({ color: 0xff7a1a, emissive: 0x8a2b00 });
+
+    // Shared combat presentation.
+    this._matFlash      = new THREE.MeshLambertMaterial({ color: 0xffffff });
+    this._matHpBg       = new THREE.MeshBasicMaterial({ color: 0x440000 });
+    this._matHpFg       = new THREE.MeshBasicMaterial({ color: 0x00cc00 });
+    this._matProjectile = new THREE.MeshLambertMaterial({ color: 0x9adce4, emissive: 0x163d44 });
   }
 
   // ─── Mesh factories ────────────────────────────────────────────────────────
 
-  _makeFaceTexture(drawFn) {
-    const c = document.createElement('canvas');
-    c.width = c.height = 16;
-    drawFn(c.getContext('2d'));
-    const t = new THREE.CanvasTexture(c);
-    t.magFilter = THREE.NearestFilter;
-    t.minFilter = THREE.NearestFilter;
-    return new THREE.MeshLambertMaterial({ map: t });
+  _part(group, geometry, material, x, y, z, { rx = 0, ry = 0, rz = 0 } = {}) {
+    const mesh = new THREE.Mesh(geometry, material);
+    mesh.position.set(x, y, z);
+    mesh.rotation.set(rx, ry, rz);
+    mesh._origMat = material;
+    group.add(mesh);
+    return mesh;
   }
 
-  _drawZombieFace(ctx) {
-    ctx.fillStyle = '#7aaa6a'; ctx.fillRect(0, 0, 16, 16);
-    ctx.fillStyle = '#5a9a5a'; ctx.fillRect(0, 0, 16, 1);
-    ctx.fillStyle = '#330000'; ctx.fillRect(2, 4, 4, 3); ctx.fillRect(10, 4, 4, 3);
-    ctx.fillStyle = '#cc0000'; ctx.fillRect(3, 5, 2, 2); ctx.fillRect(11, 5, 2, 2);
-    ctx.fillStyle = '#1a1a1a'; ctx.fillRect(4, 10, 8, 2);
-    ctx.fillStyle = '#330000'; ctx.fillRect(5, 10, 2, 1); ctx.fillRect(9, 10, 2, 1);
-  }
-
-  _drawCreeperFace(ctx) {
-    ctx.fillStyle = '#44aa44'; ctx.fillRect(0, 0, 16, 16);
-    ctx.fillStyle = '#111111';
-    ctx.fillRect(2, 3, 4, 4); ctx.fillRect(10, 3, 4, 4);
-    ctx.fillRect(6, 7, 4, 4);
-    ctx.fillRect(4, 11, 2, 2); ctx.fillRect(6,  9, 2, 2);
-    ctx.fillRect(8, 11, 2, 2); ctx.fillRect(10, 9, 2, 2);
-    ctx.fillRect(4, 13, 8, 2);
-  }
-
-  _drawSkeletonFace(ctx) {
-    ctx.fillStyle = '#ddddbb'; ctx.fillRect(0, 0, 16, 16);
-    ctx.fillStyle = '#111111'; ctx.fillRect(2, 4, 4, 4); ctx.fillRect(10, 4, 4, 4);
-    ctx.fillStyle = '#333322'; ctx.fillRect(7, 7, 2, 3);
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(3, 12, 2, 2); ctx.fillRect(6, 12, 2, 2);
-    ctx.fillRect(9, 12, 2, 2); ctx.fillRect(12, 12, 2, 2);
-    ctx.fillStyle = '#eeeecc'; ctx.fillRect(0, 0, 1, 16); ctx.fillRect(0, 0, 16, 1);
-  }
-
-  _makeMesh() {
+  _makeAshboundMesh() {
     const g = new THREE.Group();
-    const part = (geo, mat, x, y, z, rx = 0) => {
-      const m = new THREE.Mesh(geo, mat);
-      m.position.set(x, y, z);
-      m.rotation.x = rx;
-      m._origMat = mat;
-      g.add(m);
-      return m;
-    };
-    const legGeo = new THREE.BoxGeometry(0.24, 0.75, 0.28);
-    part(legGeo, this._matPants, -0.13, 0.375, 0);
-    part(legGeo, this._matPants,  0.13, 0.375, 0);
-    part(new THREE.BoxGeometry(0.5, 0.9, 0.3), this._matShirt, 0, 1.20, 0);
-    const zFaceMat = this._makeFaceTexture(ctx => this._drawZombieFace(ctx));
-    const zHeadMats = [this._matSkin, this._matSkin, this._matSkin, this._matSkin, zFaceMat, this._matSkin];
-    const zHead = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.5, 0.5), zHeadMats);
-    zHead.position.set(0, 1.90, 0); zHead._origMat = zHeadMats; g.add(zHead);
-    const eyeGeo = new THREE.BoxGeometry(0.1, 0.08, 0.06);
-    part(eyeGeo, this._matEye, -0.12, 1.92, 0.26);
-    part(eyeGeo, this._matEye,  0.12, 1.92, 0.26);
-    const armGeo = new THREE.BoxGeometry(0.24, 0.7, 0.24);
-    part(armGeo, this._matSkin, -0.37, 1.4, 0, -Math.PI / 2);
-    part(armGeo, this._matSkin,  0.37, 1.4, 0, -Math.PI / 2);
+    const legGeo = new THREE.BoxGeometry(0.22, 0.72, 0.25);
+    this._part(g, legGeo, this._matAshDark, -0.13, 0.36, 0);
+    this._part(g, legGeo, this._matAshDark,  0.13, 0.36, 0);
+    this._part(g, new THREE.BoxGeometry(0.52, 0.84, 0.30), this._matAshCloth, 0, 1.13, 0);
+
+    // Uneven coal-like shoulders break the familiar block-humanoid silhouette.
+    this._part(g, new THREE.DodecahedronGeometry(0.19, 0), this._matAsh, -0.35, 1.42, 0);
+    this._part(g, new THREE.DodecahedronGeometry(0.14, 0), this._matAsh,  0.36, 1.36, 0.02);
+
+    const head = this._part(g, new THREE.DodecahedronGeometry(0.32, 0), this._matAsh, 0, 1.82, 0);
+    head.scale.set(0.95, 1.05, 0.9);
+    const eyeGeo = new THREE.BoxGeometry(0.09, 0.055, 0.045);
+    this._part(g, eyeGeo, this._matEmber, -0.11, 1.86, 0.27);
+    this._part(g, eyeGeo, this._matEmber,  0.11, 1.86, 0.27);
+    this._part(g, new THREE.BoxGeometry(0.04, 0.42, 0.025), this._matEmber, -0.13, 1.18, 0.17, { rz: -0.2 });
+
+    const armGeo = new THREE.BoxGeometry(0.20, 0.65, 0.20);
+    this._part(g, armGeo, this._matAsh, -0.38, 1.18, 0, { rx: -0.5 });
+    this._part(g, armGeo, this._matAsh,  0.38, 1.18, 0, { rx: -0.5 });
     return g;
   }
 
-  _makeCreeperMesh() {
+  _makeShardcasterMesh() {
     const g = new THREE.Group();
-    const part = (geo, mat, x, y, z) => {
-      const m = new THREE.Mesh(geo, mat);
-      m.position.set(x, y, z);
-      m._origMat = mat;
-      g.add(m);
-      return m;
-    };
-    const C = this._matCreeper;
-    const legGeo = new THREE.BoxGeometry(0.2, 0.45, 0.2);
-    part(legGeo, C, -0.15, 0.225, -0.13);
-    part(legGeo, C,  0.15, 0.225, -0.13);
-    part(legGeo, C, -0.15, 0.225,  0.13);
-    part(legGeo, C,  0.15, 0.225,  0.13);
-    part(new THREE.BoxGeometry(0.5, 0.75, 0.5), C, 0, 0.825, 0);
-    const cFaceMat = this._makeFaceTexture(ctx => this._drawCreeperFace(ctx));
-    const cHeadMats = [C, C, C, C, cFaceMat, C];
-    const cHead = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.55, 0.55), cHeadMats);
-    cHead.position.set(0, 1.475, 0); cHead._origMat = cHeadMats; g.add(cHead);
+    const legGeo = new THREE.ConeGeometry(0.11, 0.72, 4);
+    this._part(g, legGeo, this._matShardDark, -0.13, 0.36, 0, { ry: Math.PI / 4 });
+    this._part(g, legGeo, this._matShardDark,  0.13, 0.36, 0, { ry: Math.PI / 4 });
+
+    const torso = this._part(g, new THREE.OctahedronGeometry(0.43, 0), this._matShard, 0, 1.10, 0);
+    torso.scale.set(0.85, 1.15, 0.62);
+    this._part(g, new THREE.OctahedronGeometry(0.18, 0), this._matShardCore, 0, 1.12, 0.31);
+
+    const head = this._part(g, new THREE.OctahedronGeometry(0.27, 0), this._matShardDark, 0, 1.78, 0);
+    head.scale.set(0.8, 1.1, 0.8);
+    this._part(g, new THREE.OctahedronGeometry(0.07, 0), this._matShardCore, 0, 1.80, 0.25);
+
+    // Long crystalline arms signal the ranged role without a bow/skeleton motif.
+    const armGeo = new THREE.ConeGeometry(0.10, 0.72, 4);
+    this._part(g, armGeo, this._matShard, -0.37, 1.15, 0.04, { rz: 0.22 });
+    this._part(g, armGeo, this._matShard,  0.37, 1.15, 0.04, { rz: -0.22 });
     return g;
   }
 
-  _makeSkeletonMesh() {
+  _makeSlagburstMesh() {
     const g = new THREE.Group();
-    const part = (geo, mat, x, y, z) => {
-      const m = new THREE.Mesh(geo, mat);
-      m.position.set(x, y, z);
-      m._origMat = mat;
-      g.add(m);
-      return m;
-    };
-    const B_ = this._matBone;
-    const legGeo = new THREE.BoxGeometry(0.18, 0.75, 0.18);
-    part(legGeo, B_, -0.10, 0.375, 0);
-    part(legGeo, B_,  0.10, 0.375, 0);
-    part(new THREE.BoxGeometry(0.38, 0.85, 0.2), B_, 0, 1.175, 0);
-    const sFaceMat = this._makeFaceTexture(ctx => this._drawSkeletonFace(ctx));
-    const sHeadMats = [B_, B_, B_, B_, sFaceMat, B_];
-    const sHead = new THREE.Mesh(new THREE.BoxGeometry(0.45, 0.45, 0.45), sHeadMats);
-    sHead.position.set(0, 1.825, 0); sHead._origMat = sHeadMats; g.add(sHead);
-    const armGeo = new THREE.BoxGeometry(0.16, 0.7, 0.16);
-    const bowArm = part(armGeo, B_, -0.31, 1.2, 0);
-    bowArm.rotation.x = -Math.PI / 4;
-    part(armGeo, B_,  0.31, 1.2, 0);
+    const footGeo = new THREE.DodecahedronGeometry(0.17, 0);
+    for (const [x, z] of [[-0.25,-0.20],[0.25,-0.20],[-0.25,0.20],[0.25,0.20]]) {
+      this._part(g, footGeo, this._matSlagDark, x, 0.20, z);
+    }
+
+    const body = this._part(g, new THREE.DodecahedronGeometry(0.52, 0), this._matSlag, 0, 0.82, 0);
+    body.scale.set(1.05, 1.15, 1.0);
+    this._part(g, new THREE.OctahedronGeometry(0.20, 0), this._matSlagHot, 0, 0.88, 0.45);
+    this._part(g, new THREE.BoxGeometry(0.035, 0.52, 0.03), this._matSlagHot, -0.17, 0.86, 0.45, { rz: 0.45 });
+    this._part(g, new THREE.BoxGeometry(0.035, 0.40, 0.03), this._matSlagHot, 0.19, 0.74, 0.43, { rz: -0.55 });
+
+    const crown = this._part(g, new THREE.ConeGeometry(0.24, 0.36, 5), this._matSlagDark, 0, 1.40, 0);
+    crown.rotation.y = 0.3;
     return g;
   }
 
@@ -193,15 +162,15 @@ export class MobSystem {
     if (Number.isFinite(config.lightSafeRadius) && config.lightSafeRadius >= 0) this._lightSafeRadius = Math.floor(config.lightSafeRadius);
 
     if (config.typeWeights && typeof config.typeWeights === 'object') {
-      const zombie = Math.max(0, Number(config.typeWeights.zombie) || 0);
-      const skeleton = Math.max(0, Number(config.typeWeights.skeleton) || 0);
-      const creeper = Math.max(0, Number(config.typeWeights.creeper) || 0);
-      const total = zombie + skeleton + creeper;
+      const ashbound = Math.max(0, Number(config.typeWeights[ENEMY_TYPES.ASHBOUND]) || 0);
+      const shardcaster = Math.max(0, Number(config.typeWeights[ENEMY_TYPES.SHARDCASTER]) || 0);
+      const slagburst = Math.max(0, Number(config.typeWeights[ENEMY_TYPES.SLAGBURST]) || 0);
+      const total = ashbound + shardcaster + slagburst;
       if (total > 0) {
         this._typeWeights = {
-          zombie: zombie / total,
-          skeleton: skeleton / total,
-          creeper: creeper / total,
+          [ENEMY_TYPES.ASHBOUND]: ashbound / total,
+          [ENEMY_TYPES.SHARDCASTER]: shardcaster / total,
+          [ENEMY_TYPES.SLAGBURST]: slagburst / total,
         };
       }
     }
@@ -218,13 +187,13 @@ export class MobSystem {
     };
   }
 
-  spawn(x, y, z, type = 'zombie') {
+  spawn(x, y, z, type = ENEMY_TYPES.ASHBOUND) {
     if (this._mobs.length >= this._maxMobs) return null;
     const mob = makeMob(x, y, z, type);
     switch (type) {
-      case 'creeper':  mob.mesh = this._makeCreeperMesh(); break;
-      case 'skeleton': mob.mesh = this._makeSkeletonMesh(); break;
-      default:         mob.mesh = this._makeMesh(); break;
+      case ENEMY_TYPES.SLAGBURST:   mob.mesh = this._makeSlagburstMesh(); break;
+      case ENEMY_TYPES.SHARDCASTER: mob.mesh = this._makeShardcasterMesh(); break;
+      default:                      mob.mesh = this._makeAshboundMesh(); break;
     }
     mob.hpBar = this._makeHpBar();
     mob.mesh.position.set(x, y, z);
@@ -244,7 +213,7 @@ export class MobSystem {
     mob.vx += (kx / kl) * 7;
     mob.vy  = 4;
     mob.vz += (kz / kl) * 7;
-    if (mob.type === 'creeper') { mob._fusing = false; mob._fuseTimer = 0; }
+    if (mob.type === ENEMY_TYPES.SLAGBURST) { mob._fusing = false; mob._fuseTimer = 0; }
     if (mob.hp <= 0) this._kill(mob);
     return true;
   }
@@ -266,8 +235,6 @@ export class MobSystem {
     return best;
   }
 
-  // ─── Update ────────────────────────────────────────────────────────────────
-
   update(dt, player, isNight) {
     this._spawnTimer -= dt;
     if (isNight && this._spawnTimer <= 0 && this._mobs.length < this._maxMobs) {
@@ -277,7 +244,7 @@ export class MobSystem {
     for (const mob of this._mobs) {
       if (!mob.dead) this._updateMob(mob, dt, player, isNight);
     }
-    this._updateArrows(dt, player);
+    this._updateProjectiles(dt, player);
     this._mobs = this._mobs.filter(m => !m.dead);
   }
 
@@ -287,11 +254,11 @@ export class MobSystem {
 
   _pickSpawnType() {
     const r = Math.random();
-    const zombieEnd = this._typeWeights.zombie;
-    const skeletonEnd = zombieEnd + this._typeWeights.skeleton;
-    if (r < zombieEnd) return 'zombie';
-    if (r < skeletonEnd) return 'skeleton';
-    return 'creeper';
+    const ashboundEnd = this._typeWeights[ENEMY_TYPES.ASHBOUND];
+    const shardcasterEnd = ashboundEnd + this._typeWeights[ENEMY_TYPES.SHARDCASTER];
+    if (r < ashboundEnd) return ENEMY_TYPES.ASHBOUND;
+    if (r < shardcasterEnd) return ENEMY_TYPES.SHARDCASTER;
+    return ENEMY_TYPES.SLAGBURST;
   }
 
   _isSpawnProtectedByLight(x, y, z) {
@@ -335,13 +302,13 @@ export class MobSystem {
 
   _updateMob(mob, dt, player, isNight) {
     switch (mob.type) {
-      case 'creeper':  this._updateCreeper(mob, dt, player); break;
-      case 'skeleton': this._updateSkeleton(mob, dt, player, isNight); break;
-      default:         this._updateZombie(mob, dt, player, isNight); break;
+      case ENEMY_TYPES.SLAGBURST:   this._updateSlagburst(mob, dt, player); break;
+      case ENEMY_TYPES.SHARDCASTER: this._updateShardcaster(mob, dt, player, isNight); break;
+      default:                      this._updateAshbound(mob, dt, player, isNight); break;
     }
   }
 
-  _updateZombie(mob, dt, player, isNight) {
+  _updateAshbound(mob, dt, player, isNight) {
     const dx = player.x - mob.x, dz = player.z - mob.z;
     const distH = Math.sqrt(dx*dx + dz*dz);
     const AGGRO = 22, SPEED = 2.2;
@@ -366,7 +333,8 @@ export class MobSystem {
     if (!mob.onGround) mob.vy += GRAVITY * dt;
     this._collide(mob, dt);
     this._applyHitFlash(mob, dt);
-    this._applySunburn(mob, dt, isNight);
+    this._applyDaylightDecay(mob, dt, isNight);
+    if (mob.dead) return;
     this._updateHpBar(mob);
 
     mob.attackTimer -= dt;
@@ -379,7 +347,7 @@ export class MobSystem {
     if (mob.hp <= 0 || mob.y < -30) this._kill(mob);
   }
 
-  _updateCreeper(mob, dt, player) {
+  _updateSlagburst(mob, dt, player) {
     const dx = player.x - mob.x, dz = player.z - mob.z;
     const distH = Math.sqrt(dx*dx + dz*dz);
     const AGGRO = 20, SPEED = 2.5, FUSE_DIST = 2.8;
@@ -414,7 +382,7 @@ export class MobSystem {
       });
       if (mob._fuseTimer >= 1.5) {
         this._explode(mob, player);
-        this._kill(mob);
+        this._kill(mob, { drop: false });
         return;
       }
     } else if (mob._fusing) {
@@ -428,13 +396,13 @@ export class MobSystem {
     if (mob.hp <= 0 || mob.y < -30) this._kill(mob);
   }
 
-  _updateSkeleton(mob, dt, player, isNight) {
+  _updateShardcaster(mob, dt, player, isNight) {
     const dx = player.x - mob.x, dz = player.z - mob.z;
     const distH = Math.sqrt(dx*dx + dz*dz);
     const SPEED = 2.0, MIN_DIST = 6, MAX_DIST = 20;
 
     if (distH < MIN_DIST) {
-      const nx = dx / distH, nz = dz / distH;
+      const nx = dx / (distH || 1), nz = dz / (distH || 1);
       mob.vx = -nx * SPEED; mob.vz = -nz * SPEED;
     } else if (distH > MAX_DIST) {
       const nx = dx / distH, nz = dz / distH;
@@ -447,55 +415,56 @@ export class MobSystem {
     if (!mob.onGround) mob.vy += GRAVITY * dt;
     this._collide(mob, dt);
     this._applyHitFlash(mob, dt);
-    this._applySunburn(mob, dt, isNight);
+    this._applyDaylightDecay(mob, dt, isNight);
+    if (mob.dead) return;
     this._updateHpBar(mob);
 
-    mob._arrowTimer -= dt;
-    if (distH < MAX_DIST && mob._arrowTimer <= 0) {
-      mob._arrowTimer = 2.5;
-      this._shootArrow(mob, player);
+    mob._shotTimer -= dt;
+    if (distH < MAX_DIST && mob._shotTimer <= 0) {
+      mob._shotTimer = 2.5;
+      this._shootShard(mob, player);
     }
     if (mob.hp <= 0 || mob.y < -30) this._kill(mob);
   }
 
-  // ─── Arrow projectiles ────────────────────────────────────────────────────
+  // ─── Shard projectiles ────────────────────────────────────────────────────
 
-  _shootArrow(mob, player) {
-    const eyeY = mob.y + MOB_H * 0.8;
+  _shootShard(mob, player) {
+    const originY = mob.y + MOB_H * 0.72;
     const tx = player.x - mob.x;
-    const ty = (player.y + 0.9) - eyeY;
+    const ty = (player.y + 0.9) - originY;
     const tz = player.z - mob.z;
     const dist = Math.sqrt(tx*tx + ty*ty + tz*tz) || 1;
     const speed = 14;
 
-    const arrow = {
-      x: mob.x, y: eyeY, z: mob.z,
+    const projectile = {
+      x: mob.x, y: originY, z: mob.z,
       vx: (tx / dist) * speed,
       vy: (ty / dist) * speed,
       vz: (tz / dist) * speed,
       mesh: null, dead: false, life: 4,
     };
 
-    const geo = new THREE.CylinderGeometry(0.03, 0.03, 0.7, 4);
-    arrow.mesh = new THREE.Mesh(geo, this._matArrow);
-    arrow.mesh.position.set(arrow.x, arrow.y, arrow.z);
-    this._scene.add(arrow.mesh);
-    this._arrows.push(arrow);
+    projectile.mesh = new THREE.Mesh(new THREE.OctahedronGeometry(0.11, 0), this._matProjectile);
+    projectile.mesh.scale.set(0.8, 0.8, 1.8);
+    projectile.mesh.position.set(projectile.x, projectile.y, projectile.z);
+    this._scene.add(projectile.mesh);
+    this._projectiles.push(projectile);
   }
 
-  _updateArrows(dt, player) {
-    for (const arrow of this._arrows) {
-      if (arrow.dead) continue;
-      arrow.life -= dt;
-      if (arrow.life <= 0) { this._killArrow(arrow); continue; }
+  _updateProjectiles(dt, player) {
+    for (const projectile of this._projectiles) {
+      if (projectile.dead) continue;
+      projectile.life -= dt;
+      if (projectile.life <= 0) { this._killProjectile(projectile); continue; }
 
-      arrow.vy += GRAVITY * 0.45 * dt;
-      const nx = arrow.x + arrow.vx * dt;
-      const ny = arrow.y + arrow.vy * dt;
-      const nz = arrow.z + arrow.vz * dt;
+      projectile.vy += GRAVITY * 0.45 * dt;
+      const nx = projectile.x + projectile.vx * dt;
+      const ny = projectile.y + projectile.vy * dt;
+      const nz = projectile.z + projectile.vz * dt;
 
       if (this._world.isSolid(Math.floor(nx), Math.floor(ny), Math.floor(nz))) {
-        this._killArrow(arrow); continue;
+        this._killProjectile(projectile); continue;
       }
 
       const pdx = Math.abs(player.x - nx);
@@ -503,22 +472,22 @@ export class MobSystem {
       const pdz = Math.abs(player.z - nz);
       if (pdx < 0.4 && pdy > -0.2 && pdy < 1.8 && pdz < 0.4) {
         player._takeDamage(4);
-        player.knockback(arrow.x, arrow.z);
-        this._killArrow(arrow); continue;
+        player.knockback(projectile.x, projectile.z);
+        this._killProjectile(projectile); continue;
       }
 
-      arrow.x = nx; arrow.y = ny; arrow.z = nz;
-      arrow.mesh.position.set(arrow.x, arrow.y, arrow.z);
-      arrow.mesh.rotation.z = -Math.atan2(arrow.vy, Math.sqrt(arrow.vx**2 + arrow.vz**2));
-      arrow.mesh.rotation.y = Math.atan2(arrow.vx, arrow.vz);
+      projectile.x = nx; projectile.y = ny; projectile.z = nz;
+      projectile.mesh.position.set(projectile.x, projectile.y, projectile.z);
+      projectile.mesh.rotation.x += dt * 7;
+      projectile.mesh.rotation.y += dt * 10;
     }
-    this._arrows = this._arrows.filter(a => !a.dead);
+    this._projectiles = this._projectiles.filter(p => !p.dead);
   }
 
-  _killArrow(arrow) {
-    arrow.dead = true;
-    this._scene.remove(arrow.mesh);
-    arrow.mesh.geometry.dispose();
+  _killProjectile(projectile) {
+    projectile.dead = true;
+    this._scene.remove(projectile.mesh);
+    projectile.mesh.geometry.dispose();
   }
 
   // ─── Explosion ────────────────────────────────────────────────────────────
@@ -556,13 +525,13 @@ export class MobSystem {
     });
   }
 
-  _applySunburn(mob, dt, isNight) {
+  _applyDaylightDecay(mob, dt, isNight) {
     if (!isNight && this._isInSunlight(mob)) {
       mob._sunBurnTimer += dt;
       if (mob._sunBurnTimer >= 1) {
         mob._sunBurnTimer = 0;
         mob.hp -= 1;
-        if (mob.hp <= 0) { this._kill(mob); return; }
+        if (mob.hp <= 0) this._kill(mob);
       }
     } else {
       mob._sunBurnTimer = 0;
@@ -609,23 +578,30 @@ export class MobSystem {
     mob.x = nx; mob.y = ny; mob.z = nz;
   }
 
-  _kill(mob) {
+  _kill(mob, { drop = true } = {}) {
+    if (!mob || mob.dead) return;
     mob.dead = true;
+
+    if (drop && this.onDropItem) {
+      const loot = rollEnemyDrop(mob.type);
+      if (loot) this.onDropItem(mob.x, mob.y + 0.55, mob.z, loot.id, loot.count);
+    }
+
     this._scene.remove(mob.mesh);
     this._scene.remove(mob.hpBar);
-    mob.mesh.traverse(c => { if (c.isMesh) c.geometry.dispose(); });
-    mob.hpBar.children.forEach(c => c.geometry.dispose());
+    mob.mesh.traverse(c => { if (c.isMesh) c.geometry?.dispose?.(); });
+    mob.hpBar.children.forEach(c => c.geometry?.dispose?.());
     mob.hpBar._fg.material.dispose();
   }
 
   dispose() {
-    for (const mob of this._mobs) this._kill(mob);
-    for (const arrow of this._arrows) this._killArrow(arrow);
-    this._mobs = []; this._arrows = [];
-    this._matSkin.dispose();   this._matShirt.dispose();  this._matPants.dispose();
-    this._matEye.dispose();    this._matCreeper.dispose(); this._matCreeperDark.dispose();
-    this._matBone.dispose();   this._matBoneDark.dispose();
-    this._matFlash.dispose();  this._matHpBg.dispose();   this._matHpFg.dispose();
-    this._matArrow.dispose();
+    for (const mob of this._mobs) this._kill(mob, { drop: false });
+    for (const projectile of this._projectiles) this._killProjectile(projectile);
+    this._mobs = []; this._projectiles = [];
+    this._matAsh.dispose();       this._matAshCloth.dispose(); this._matAshDark.dispose();
+    this._matEmber.dispose();     this._matShard.dispose();    this._matShardDark.dispose();
+    this._matShardCore.dispose(); this._matSlag.dispose();     this._matSlagDark.dispose();
+    this._matSlagHot.dispose();   this._matFlash.dispose();    this._matHpBg.dispose();
+    this._matHpFg.dispose();      this._matProjectile.dispose();
   }
 }

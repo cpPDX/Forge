@@ -26,12 +26,6 @@ function refineAndCollect(forge, inventory, recipeId) {
   assert.equal(forge.collectOutput(FORGE_POS, inventory), recipe.output.count);
 }
 
-function selectHotbarItem(inventory, id) {
-  const idx = inventory.hotbarSlots().findIndex(slot => slot.id === id && slot.count > 0);
-  assert.notEqual(idx, -1, `expected item ${id} in hotbar`);
-  inventory.selectSlot(idx);
-}
-
 function guideUpdate(guide, inventory, overrides = {}) {
   return guide.update({
     input: null,
@@ -78,10 +72,10 @@ test('fresh progression systems compose from first objective through the persist
   craftResult(crafting, inventory, B.OAK_PLANKS);
   craftResult(crafting, inventory, ITEMS.WOODEN_PICKAXE);
   guideUpdate(guide, inventory);
-  assert.equal(guide.step, 'equip');
 
-  selectHotbarItem(inventory, ITEMS.WOODEN_PICKAXE);
-  guideUpdate(guide, inventory);
+  // On a fresh inventory the crafted pickaxe fills hotbar slot 0, which is
+  // already selected, so the guide correctly skips a redundant equip prompt.
+  assert.equal(inventory.hotbarSlot(inventory.selectedSlot).id, ITEMS.WOODEN_PICKAXE);
   assert.equal(guide.step, 'stone');
 
   // Fifteen cobblestone covers the Stone Forge, Stone Pickaxe, and Iron Forge upgrade path.

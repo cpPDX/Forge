@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import { B } from '../src/utils/constants.js';
+import { ENEMY_TYPES } from '../src/systems/EnemyIdentity.js';
 import { MobSystem } from '../src/systems/MobSystem.js';
 import { NightPressureSystem, pressureProfileForNight } from '../src/systems/NightPressureSystem.js';
 
@@ -22,7 +23,7 @@ test('Night 1 starts as a deliberately limited baseline threat', () => {
   assert.equal(state.nightNumber, 1);
   assert.equal(state.profile.maxMobs, 5);
   assert.equal(state.profile.spawnInterval, 7);
-  assert.equal(state.profile.typeWeights.creeper, 0);
+  assert.equal(state.profile.typeWeights[ENEMY_TYPES.SLAGBURST], 0);
   assert.equal(system.activeNight, true);
 });
 
@@ -49,7 +50,7 @@ test('sunset warning identifies the next hostile night before darkness', () => {
   assert.equal(system.view({ isNight: false, hostilesAllowed: true, dayFrac: 0.67 }), null);
   const warning = system.view({ isNight: false, hostilesAllowed: true, dayFrac: 0.70 });
   assert.equal(warning.title, 'Night 1 approaches');
-  assert.match(warning.detail, /shelter/i);
+  assert.match(warning.detail, /Ashbound/);
   assert.equal(system.view({ isNight: false, hostilesAllowed: false, dayFrac: 0.70 }), null);
 });
 
@@ -70,7 +71,7 @@ test('later nights escalate in controlled steps and pressure caps at Night 3', (
 
   assert.ok(night2.maxMobs > night1.maxMobs);
   assert.ok(night2.spawnInterval < night1.spawnInterval);
-  assert.ok(night2.typeWeights.creeper > night1.typeWeights.creeper);
+  assert.ok(night2.typeWeights[ENEMY_TYPES.SLAGBURST] > night1.typeWeights[ENEMY_TYPES.SLAGBURST]);
   assert.ok(night3.maxMobs > night2.maxMobs);
   assert.deepEqual(
     { ...night4, nightNumber: 3 },
@@ -110,12 +111,12 @@ test('invalid persisted night state is rejected without mutating defaults', () =
 
 test('pressure profiles are isolated copies and cannot mutate the model', () => {
   const profile = pressureProfileForNight(2);
-  profile.typeWeights.zombie = 1;
+  profile.typeWeights[ENEMY_TYPES.ASHBOUND] = 1;
   const fresh = pressureProfileForNight(2);
-  assert.equal(fresh.typeWeights.zombie, 0.55);
+  assert.equal(fresh.typeWeights[ENEMY_TYPES.ASHBOUND], 0.55);
 });
 
-test('MobSystem accepts pressure configuration and normalizes type weights', () => {
+test('MobSystem accepts pressure configuration and normalizes Forge roster weights', () => {
   const world = { getBlock() { return B.AIR; } };
   const mobs = new MobSystem({ add() {}, remove() {} }, world, { position: { x: 0, y: 0, z: 0 } });
 
@@ -125,7 +126,11 @@ test('MobSystem accepts pressure configuration and normalizes type weights', () 
     spawnMinDist: 11,
     spawnMaxDist: 24,
     lightSafeRadius: 8,
-    typeWeights: { zombie: 5.5, skeleton: 3.5, creeper: 1 },
+    typeWeights: {
+      [ENEMY_TYPES.ASHBOUND]: 5.5,
+      [ENEMY_TYPES.SHARDCASTER]: 3.5,
+      [ENEMY_TYPES.SLAGBURST]: 1,
+    },
   });
 
   const config = mobs.pressureConfig();
@@ -134,17 +139,13 @@ test('MobSystem accepts pressure configuration and normalizes type weights', () 
   assert.equal(config.spawnMinDist, 11);
   assert.equal(config.spawnMaxDist, 24);
   assert.equal(config.lightSafeRadius, 8);
-  assert.ok(Math.abs(config.typeWeights.zombie - 0.55) < 0.000001);
-  assert.ok(Math.abs(config.typeWeights.skeleton - 0.35) < 0.000001);
-  assert.ok(Math.abs(config.typeWeights.creeper - 0.10) < 0.000001);
+  assert.ok(Math.abs(config.typeWeights[ENEMY_TYPES.ASHBOUND] - 0.55) < 0.000001);
+  assert.ok(Math.abs(config.typeWeights[ENEMY_TYPES.SHARDCASTER] - 0.35) < 0.000001);
+  assert.ok(Math.abs(config.typeWeights[ENEMY_TYPES.SLAGBURST] - 0.10) < 0.000001);
   mobs.dispose();
 });
 
 test('placed torches and glowstone suppress nearby spawn candidates', () => {
-  const lit = new Set([
-    '3,11,4',
-    '-4,10,0',
-  ]);
   const world = {
     getBlock(x, y, z) {
       const key = `${x},${y},${z}`;
@@ -158,6 +159,5 @@ test('placed torches and glowstone suppress nearby spawn candidates', () => {
 
   assert.equal(mobs._isSpawnProtectedByLight(0, 10, 0), true);
   assert.equal(mobs._isSpawnProtectedByLight(20, 10, 20), false);
-  assert.ok(lit.size > 0);
   mobs.dispose();
 });

@@ -1,3 +1,5 @@
+import { ENEMY_TYPES } from './EnemyIdentity.js';
+
 const PROFILES = [
   {
     tier: 1,
@@ -6,7 +8,11 @@ const PROFILES = [
     spawnInterval: 7.0,
     spawnMinDist: 13,
     spawnMaxDist: 24,
-    typeWeights: { zombie: 0.75, skeleton: 0.25, creeper: 0.00 },
+    typeWeights: {
+      [ENEMY_TYPES.ASHBOUND]: 0.75,
+      [ENEMY_TYPES.SHARDCASTER]: 0.25,
+      [ENEMY_TYPES.SLAGBURST]: 0.00,
+    },
     lightSafeRadius: 8,
   },
   {
@@ -16,7 +22,11 @@ const PROFILES = [
     spawnInterval: 4.8,
     spawnMinDist: 11,
     spawnMaxDist: 24,
-    typeWeights: { zombie: 0.55, skeleton: 0.35, creeper: 0.10 },
+    typeWeights: {
+      [ENEMY_TYPES.ASHBOUND]: 0.55,
+      [ENEMY_TYPES.SHARDCASTER]: 0.35,
+      [ENEMY_TYPES.SLAGBURST]: 0.10,
+    },
     lightSafeRadius: 8,
   },
   {
@@ -26,7 +36,11 @@ const PROFILES = [
     spawnInterval: 3.4,
     spawnMinDist: 10,
     spawnMaxDist: 22,
-    typeWeights: { zombie: 0.45, skeleton: 0.35, creeper: 0.20 },
+    typeWeights: {
+      [ENEMY_TYPES.ASHBOUND]: 0.45,
+      [ENEMY_TYPES.SHARDCASTER]: 0.35,
+      [ENEMY_TYPES.SLAGBURST]: 0.20,
+    },
     lightSafeRadius: 8,
   },
 ];
@@ -103,16 +117,19 @@ export class NightPressureSystem {
         tone: 'warning',
         title: `Night ${nextNight} approaches`,
         detail: nextNight === 1
-          ? 'Finish shelter, place torches, eat, and equip a weapon.'
+          ? 'Finish shelter, place torches, eat, and equip a weapon. Ashbound emerge after dark.'
           : `${nextProfile.name} pressure — reinforce shelter, extend torch cover, and upgrade gear.`,
       };
     }
 
     if (isNight === true && hostilesAllowed === true && this._nightNumber > 0) {
+      const roster = this._nightNumber === 1
+        ? 'Ashbound + Shardcasters'
+        : 'Ashbound + Shardcasters + Slagbursts';
       return {
         tone: 'danger',
         title: `Night ${this._nightNumber}`,
-        detail: `${profile.name} pressure · torches suppress nearby spawns`,
+        detail: `${profile.name} pressure · ${roster} · torches suppress nearby spawns`,
       };
     }
 

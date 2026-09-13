@@ -8,6 +8,7 @@ const canvas = document.getElementById('game-canvas');
 
 try {
   const game = new Game(canvas);
+  game._mobs.onDropItem = (x, y, z, id, count) => game._drops.spawn(x, y, z, id, count);
   new FirstSessionController(game).init();
   new ForgeController(game).init();
   new ResourceProgressionController(game).init();

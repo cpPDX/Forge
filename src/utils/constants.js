@@ -24,7 +24,8 @@ export const ITEMS = {
   WOODEN_SWORD:      100,
   STONE_SWORD:       101,
   IRON_SWORD:        102,
-  DIAMOND_SWORD:     103,
+  FORGEBRAND:        103,
+  DIAMOND_SWORD:     103, // legacy symbolic alias; numeric save ID remains unchanged
   APPLE:             104,
   STICK:             105,
   WOODEN_PICKAXE:    106,

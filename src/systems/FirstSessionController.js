@@ -13,6 +13,8 @@ export class FirstSessionController {
     this._freshSave = false;
   }
 
+  get allowsHostiles() { return this._guide.allowsHostiles; }
+
   init() {
     const saved = this._game._save.load();
     this._freshSave = !saved;

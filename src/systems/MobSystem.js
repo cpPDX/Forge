@@ -31,7 +31,12 @@ export class MobSystem {
     this._mobs   = [];
     this._arrows = [];
     this._spawnTimer = 0;
-    this._maxMobs    = 15;
+    this._maxMobs = 15;
+    this._spawnInterval = 3.5;
+    this._spawnMinDist = 14;
+    this._spawnMaxDist = 28;
+    this._typeWeights = { zombie: 0.5, skeleton: 0.3, creeper: 0.2 };
+    this._lightSafeRadius = 0;
 
     // Zombie
     this._matSkin   = new THREE.MeshLambertMaterial({ color: 0x7aaa6a });
@@ -106,7 +111,6 @@ export class MobSystem {
     part(legGeo, this._matPants, -0.13, 0.375, 0);
     part(legGeo, this._matPants,  0.13, 0.375, 0);
     part(new THREE.BoxGeometry(0.5, 0.9, 0.3), this._matShirt, 0, 1.20, 0);
-    // Head with pixel-art face texture on front (+Z) face
     const zFaceMat = this._makeFaceTexture(ctx => this._drawZombieFace(ctx));
     const zHeadMats = [this._matSkin, this._matSkin, this._matSkin, this._matSkin, zFaceMat, this._matSkin];
     const zHead = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.5, 0.5), zHeadMats);
@@ -129,16 +133,13 @@ export class MobSystem {
       g.add(m);
       return m;
     };
-    const C = this._matCreeper, D = this._matCreeperDark;
-    // 4 short legs
+    const C = this._matCreeper;
     const legGeo = new THREE.BoxGeometry(0.2, 0.45, 0.2);
     part(legGeo, C, -0.15, 0.225, -0.13);
     part(legGeo, C,  0.15, 0.225, -0.13);
     part(legGeo, C, -0.15, 0.225,  0.13);
     part(legGeo, C,  0.15, 0.225,  0.13);
-    // Body (squat, wide)
     part(new THREE.BoxGeometry(0.5, 0.75, 0.5), C, 0, 0.825, 0);
-    // Head with iconic pixel-art creeper face texture on front (+Z) face
     const cFaceMat = this._makeFaceTexture(ctx => this._drawCreeperFace(ctx));
     const cHeadMats = [C, C, C, C, cFaceMat, C];
     const cHead = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.55, 0.55), cHeadMats);
@@ -155,22 +156,18 @@ export class MobSystem {
       g.add(m);
       return m;
     };
-    const B_ = this._matBone, D = this._matBoneDark;
-    // Thin legs
+    const B_ = this._matBone;
     const legGeo = new THREE.BoxGeometry(0.18, 0.75, 0.18);
     part(legGeo, B_, -0.10, 0.375, 0);
     part(legGeo, B_,  0.10, 0.375, 0);
-    // Narrow ribcage body
     part(new THREE.BoxGeometry(0.38, 0.85, 0.2), B_, 0, 1.175, 0);
-    // Head with pixel-art skeleton face texture on front (+Z) face
     const sFaceMat = this._makeFaceTexture(ctx => this._drawSkeletonFace(ctx));
     const sHeadMats = [B_, B_, B_, B_, sFaceMat, B_];
     const sHead = new THREE.Mesh(new THREE.BoxGeometry(0.45, 0.45, 0.45), sHeadMats);
     sHead.position.set(0, 1.825, 0); sHead._origMat = sHeadMats; g.add(sHead);
-    // Arms (one angled forward to hold bow)
     const armGeo = new THREE.BoxGeometry(0.16, 0.7, 0.16);
     const bowArm = part(armGeo, B_, -0.31, 1.2, 0);
-    bowArm.rotation.x = -Math.PI / 4; // angled forward
+    bowArm.rotation.x = -Math.PI / 4;
     part(armGeo, B_,  0.31, 1.2, 0);
     return g;
   }
@@ -187,6 +184,39 @@ export class MobSystem {
   }
 
   // ─── Public API ────────────────────────────────────────────────────────────
+
+  configurePressure(config = {}) {
+    if (Number.isInteger(config.maxMobs) && config.maxMobs > 0) this._maxMobs = config.maxMobs;
+    if (Number.isFinite(config.spawnInterval) && config.spawnInterval > 0) this._spawnInterval = config.spawnInterval;
+    if (Number.isFinite(config.spawnMinDist) && config.spawnMinDist > 0) this._spawnMinDist = config.spawnMinDist;
+    if (Number.isFinite(config.spawnMaxDist) && config.spawnMaxDist >= this._spawnMinDist) this._spawnMaxDist = config.spawnMaxDist;
+    if (Number.isFinite(config.lightSafeRadius) && config.lightSafeRadius >= 0) this._lightSafeRadius = Math.floor(config.lightSafeRadius);
+
+    if (config.typeWeights && typeof config.typeWeights === 'object') {
+      const zombie = Math.max(0, Number(config.typeWeights.zombie) || 0);
+      const skeleton = Math.max(0, Number(config.typeWeights.skeleton) || 0);
+      const creeper = Math.max(0, Number(config.typeWeights.creeper) || 0);
+      const total = zombie + skeleton + creeper;
+      if (total > 0) {
+        this._typeWeights = {
+          zombie: zombie / total,
+          skeleton: skeleton / total,
+          creeper: creeper / total,
+        };
+      }
+    }
+  }
+
+  pressureConfig() {
+    return {
+      maxMobs: this._maxMobs,
+      spawnInterval: this._spawnInterval,
+      spawnMinDist: this._spawnMinDist,
+      spawnMaxDist: this._spawnMaxDist,
+      typeWeights: { ...this._typeWeights },
+      lightSafeRadius: this._lightSafeRadius,
+    };
+  }
 
   spawn(x, y, z, type = 'zombie') {
     if (this._mobs.length >= this._maxMobs) return null;
@@ -214,7 +244,6 @@ export class MobSystem {
     mob.vx += (kx / kl) * 7;
     mob.vy  = 4;
     mob.vz += (kz / kl) * 7;
-    // Hitting a fusing creeper resets its fuse
     if (mob.type === 'creeper') { mob._fusing = false; mob._fuseTimer = 0; }
     if (mob.hp <= 0) this._kill(mob);
     return true;
@@ -243,7 +272,7 @@ export class MobSystem {
     this._spawnTimer -= dt;
     if (isNight && this._spawnTimer <= 0 && this._mobs.length < this._maxMobs) {
       this._trySpawn(player);
-      this._spawnTimer = 3.5;
+      this._spawnTimer = this._spawnInterval;
     }
     for (const mob of this._mobs) {
       if (!mob.dead) this._updateMob(mob, dt, player, isNight);
@@ -256,19 +285,49 @@ export class MobSystem {
 
   // ─── Internal ─────────────────────────────────────────────────────────────
 
+  _pickSpawnType() {
+    const r = Math.random();
+    const zombieEnd = this._typeWeights.zombie;
+    const skeletonEnd = zombieEnd + this._typeWeights.skeleton;
+    if (r < zombieEnd) return 'zombie';
+    if (r < skeletonEnd) return 'skeleton';
+    return 'creeper';
+  }
+
+  _isSpawnProtectedByLight(x, y, z) {
+    const radius = this._lightSafeRadius;
+    if (radius <= 0) return false;
+
+    const minY = Math.max(1, Math.floor(y) - 4);
+    const maxY = Math.min(127, Math.floor(y) + 4);
+    for (let dx = -radius; dx <= radius; dx++) {
+      for (let dz = -radius; dz <= radius; dz++) {
+        if (dx * dx + dz * dz > radius * radius) continue;
+        for (let by = minY; by <= maxY; by++) {
+          const id = this._world.getBlock(x + dx, by, z + dz);
+          if (id === B.TORCH || id === B.GLOWSTONE) return true;
+        }
+      }
+    }
+    return false;
+  }
+
   _trySpawn(player) {
     const angle = Math.random() * Math.PI * 2;
-    const dist  = 14 + Math.random() * 14;
+    const span = Math.max(0, this._spawnMaxDist - this._spawnMinDist);
+    const dist = this._spawnMinDist + Math.random() * span;
     const sx = player.x + Math.cos(angle) * dist;
     const sz = player.z + Math.sin(angle) * dist;
     const fx = Math.floor(sx), fz = Math.floor(sz);
-    const r = Math.random();
-    const type = r < 0.5 ? 'zombie' : r < 0.8 ? 'skeleton' : 'creeper';
+    const type = this._pickSpawnType();
+
     for (let y = 100; y > 1; y--) {
       if (this._world.isSolid(fx, y, fz) &&
           !this._world.isSolid(fx, y + 1, fz) &&
           !this._world.isSolid(fx, y + 2, fz)) {
-        this.spawn(sx, y + 1, sz, type);
+        const spawnY = y + 1;
+        if (this._isSpawnProtectedByLight(fx, spawnY, fz)) return;
+        this.spawn(sx, spawnY, sz, type);
         return;
       }
     }
@@ -310,7 +369,6 @@ export class MobSystem {
     this._applySunburn(mob, dt, isNight);
     this._updateHpBar(mob);
 
-    // Zombie: pure melee, fist attacks only, no ranged capability
     mob.attackTimer -= dt;
     const fullDist = Math.sqrt(dx*dx + (player.y - mob.y)**2 + dz*dz);
     if (fullDist < 1.2 && mob.attackTimer <= 0) {
@@ -346,7 +404,6 @@ export class MobSystem {
     if (!mob.onGround) mob.vy += GRAVITY * dt;
     this._collide(mob, dt);
 
-    // Fuse logic — accelerating flash, then explode
     if (distH < FUSE_DIST) {
       mob._fusing = true;
       mob._fuseTimer += dt;
@@ -371,13 +428,11 @@ export class MobSystem {
     if (mob.hp <= 0 || mob.y < -30) this._kill(mob);
   }
 
-  // Skeleton: ranged-only combat — bow and arrows, backs away from close range
   _updateSkeleton(mob, dt, player, isNight) {
     const dx = player.x - mob.x, dz = player.z - mob.z;
     const distH = Math.sqrt(dx*dx + dz*dz);
     const SPEED = 2.0, MIN_DIST = 6, MAX_DIST = 20;
 
-    // Maintain ideal shooting distance
     if (distH < MIN_DIST) {
       const nx = dx / distH, nz = dz / distH;
       mob.vx = -nx * SPEED; mob.vz = -nz * SPEED;
@@ -395,7 +450,6 @@ export class MobSystem {
     this._applySunburn(mob, dt, isNight);
     this._updateHpBar(mob);
 
-    // Shoot arrows
     mob._arrowTimer -= dt;
     if (distH < MAX_DIST && mob._arrowTimer <= 0) {
       mob._arrowTimer = 2.5;
@@ -444,7 +498,6 @@ export class MobSystem {
         this._killArrow(arrow); continue;
       }
 
-      // Player hit check (AABB)
       const pdx = Math.abs(player.x - nx);
       const pdy = (player.y + 0.9) - ny;
       const pdz = Math.abs(player.z - nz);
@@ -456,7 +509,6 @@ export class MobSystem {
 
       arrow.x = nx; arrow.y = ny; arrow.z = nz;
       arrow.mesh.position.set(arrow.x, arrow.y, arrow.z);
-      // Orient arrow along velocity
       arrow.mesh.rotation.z = -Math.atan2(arrow.vy, Math.sqrt(arrow.vx**2 + arrow.vz**2));
       arrow.mesh.rotation.y = Math.atan2(arrow.vx, arrow.vz);
     }

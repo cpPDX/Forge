@@ -22,7 +22,7 @@ const TIER_DEFS = {
   },
   [FORGE_TIERS.MASTER]: {
     name: 'Master Forge',
-    capability: 'Refine diamond and forge the strongest equipment.',
+    capability: 'Refine diamond and forge the Forgebrand masterwork.',
     upgradeFromPrevious: [
       { id: ITEMS.GOLD_INGOT, count: 4 },
       { id: ITEMS.IRON_INGOT, count: 4 },
@@ -93,14 +93,16 @@ const FORGE_CRAFTS = [
     result: { id: ITEMS.DIAMOND_PICKAXE, count: 1 },
   },
   {
-    id: 'diamond-sword',
-    name: 'Diamond Sword',
+    id: 'forgebrand',
+    name: 'Forgebrand',
     minTier: FORGE_TIERS.MASTER,
     ingredients: [
       { id: ITEMS.REFINED_DIAMOND, count: 2 },
+      { id: ITEMS.GOLD_INGOT, count: 2 },
+      { id: ITEMS.IRON_INGOT, count: 2 },
       { id: ITEMS.STICK, count: 1 },
     ],
-    result: { id: ITEMS.DIAMOND_SWORD, count: 1 },
+    result: { id: ITEMS.FORGEBRAND, count: 1 },
   },
 ];
 
@@ -175,6 +177,11 @@ export class ForgeSystem {
 
   tierDefinition(tier) {
     return TIER_DEFS[tier] ? { ...TIER_DEFS[tier] } : null;
+  }
+
+  hasTier(tier) {
+    if (!Number.isInteger(tier) || !TIER_DEFS[tier]) return false;
+    return [...this._stations.values()].some(state => state.tier >= tier);
   }
 
   refiningOptions(pos) {

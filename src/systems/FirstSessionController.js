@@ -28,6 +28,7 @@ export class FirstSessionController {
       });
     }
 
+    this._game._firstSessionController = this;
     this._wrapSaveState();
     this._wrapControls();
     this._wrapHostileSpawning();
@@ -36,6 +37,13 @@ export class FirstSessionController {
     this._configureStartOverlay();
     this._render();
     return this;
+  }
+
+  onForgeEstablished() {
+    if (!this._guide.markForgeEstablished()) return false;
+    this._render();
+    this._persistProgress();
+    return true;
   }
 
   _wrapSaveState() {

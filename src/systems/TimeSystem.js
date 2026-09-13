@@ -43,9 +43,14 @@ export class TimeSystem {
     this.dayFrac  = 0.35;
   }
 
+  _syncDayFrac() {
+    const wrapped = ((this._elapsed % DAY_MS) + DAY_MS) % DAY_MS;
+    this.dayFrac = wrapped / DAY_MS;
+  }
+
   update(dt) {
     this._elapsed += dt * 1000;
-    this.dayFrac = (this._elapsed % DAY_MS) / DAY_MS;
+    this._syncDayFrac();
   }
 
   applyToScene(scene, renderer, ambientLight, sunLight) {
@@ -68,5 +73,10 @@ export class TimeSystem {
   }
 
   serialize() { return { elapsed: this._elapsed }; }
-  load(data)  { if (data?.elapsed != null) this._elapsed = data.elapsed; }
+
+  load(data) {
+    if (data?.elapsed == null || !Number.isFinite(data.elapsed)) return;
+    this._elapsed = data.elapsed;
+    this._syncDayFrac();
+  }
 }

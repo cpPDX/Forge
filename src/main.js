@@ -1,9 +1,11 @@
 import { Game } from './game/Game.js';
+import { FirstSessionController } from './systems/FirstSessionController.js';
 
 const canvas = document.getElementById('game-canvas');
 
 try {
   const game = new Game(canvas);
+  new FirstSessionController(game).init();
   game.start();
 } catch (err) {
   const el = document.createElement('div');

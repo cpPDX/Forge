@@ -1,323 +1,479 @@
-# FORGE — Survival Game: Handoff Document
+# Forge — Current Engineering Handoff
 
-A Terraria-style 2D survival game built with Phaser 3 and Vite, deployed to GitHub Pages.
+> **Status:** current as of the Forge 0.3 vertical-slice implementation.
+>
+> This file replaces the obsolete Phaser/2D/Terraria-style handoff. If another document in this repository conflicts with this one, prefer the current source code, this handoff, `README.md`, and roadmap issue [#20](https://github.com/cpPDX/Forge/issues/20).
+
+## Product intent
+
+Forge is a **Three.js first-person 3D voxel survival-crafting game**. The active 0.3 product direction is not “build a smaller Minecraft.” The differentiating loop is the forge itself:
+
+**Explore → extract → return home → refine → forge → survive → push farther**
+
+The implemented vertical slice now has a beginning, progression arc, escalating survival pressure, and explicit ending:
+
+- lightweight first-session guidance
+- Stone → Iron → Master Forge progression
+- ore refining and processed materials
+- depth/tool-gated mining
+- escalating Night 1 / Night 2 / Night 3+ pressure
+- Forge-original Ashbound, Shardcaster, and Slagburst enemies
+- Forgebrand masterwork weapon
+- Peak Night final stand
+- persisted `THE FORGE HOLDS` completion state
+
+Issue #29 owns final end-to-end playtesting and pacing/tuning before expanding the sandbox.
 
 ---
 
-## Quick Start
+## Stack
+
+- **Runtime:** browser JavaScript ES modules
+- **3D:** `three ^0.163.0`
+- **Build/dev server:** `vite ^5.4.0`
+- **Tests:** Node's built-in `node:test`
+- **Persistence:** browser `localStorage`
+- **Deployment:** GitHub Pages through `.github/workflows/deploy.yml`
+
+There is no Phaser runtime in the current game.
+
+### Local commands
 
 ```bash
 npm install
-npm run dev        # dev server at http://localhost:3000
-npm run build      # outputs to dist/
-npm run preview    # serve dist/ locally
+npm run dev
+npm test
+npm run build
+npm run preview
 ```
 
-**Dependencies:**
-- `phaser ^3.70.0`
-- `vite ^5.4.0` (dev only)
-- `howler ^2.2.4` (installed but audio disabled; see below)
+CI uses `npm ci`, `npm test`, and `npm run build` on both pull requests and `main`. GitHub Pages deployment runs only from successful `main` builds.
 
 ---
 
-## Repository Structure
+## Current source map
 
+```text
+src/
+├── main.js
+├── blocks/
+│   ├── BlockRegistry.js
+│   └── ItemRegistry.js
+├── game/
+│   └── Game.js
+├── player/
+│   ├── Controls.js
+│   └── Player.js
+├── systems/
+│   ├── Crafting.js
+│   ├── DropSystem.js
+│   ├── EnemyIdentity.js
+│   ├── FinaleController.js
+│   ├── FinaleSystem.js
+│   ├── FirstSessionController.js
+│   ├── FirstSessionGuide.js
+│   ├── ForgeController.js
+│   ├── ForgeSystem.js
+│   ├── Inventory.js
+│   ├── MobSystem.js
+│   ├── NightPressureController.js
+│   ├── NightPressureSystem.js
+│   ├── ResourceProgression.js
+│   ├── ResourceProgressionController.js
+│   ├── SaveManager.js
+│   └── TimeSystem.js
+├── ui/
+│   ├── FinaleView.js
+│   ├── FirstSessionGuideView.js
+│   ├── ForgeView.js
+│   ├── HUD.js
+│   ├── ItemSprites.js
+│   ├── NightPressureView.js
+│   └── PlayerPreview.js
+├── utils/
+│   ├── constants.js
+│   └── noise.js
+└── world/
+    ├── ChunkMesh.js
+    └── World.js
 ```
-Forge/
-├── index.html                  # Entry point; contains error reporter script
-├── vite.config.js              # base: './', Phaser split chunk
-├── package.json
-├── .github/workflows/deploy.yml   # GitHub Actions → GitHub Pages
-└── src/
-    ├── main.js                 # Phaser.Game config + boot
-    ├── scenes/
-    │   ├── Boot.js             # Loading bar
-    │   ├── Preload.js          # Procedural textures, starts MainMenu
-    │   ├── MainMenu.js         # Title screen, Continue/New Game
-    │   ├── Game.js             # Core game loop (main scene)
-    │   ├── HUDScene.js         # Parallel HUD (hearts, hotbar, time)
-    │   ├── InventoryScene.js   # Inventory overlay
-    │   ├── CraftingScene.js    # Crafting table overlay
-    │   ├── FurnaceScene.js     # Furnace/smelting overlay
-    │   └── GameOver.js         # Death screen
-    ├── entities/
-    │   ├── Player.js           # AABB physics, survival, block breaking
-    │   ├── Mob.js              # AI, 8 mob types
-    │   └── Drop.js             # Item drops with gravity/bounce
-    ├── world/
-    │   ├── World.js            # Seeded Perlin noise, chunk generation, AABB physics
-    │   └── ChunkRenderer.js    # Canvas-based chunk renderer, per-tile pixel art
-    ├── systems/
-    │   ├── InventorySystem.js  # Hotbar (9) + main (27), stacking, serialize
-    │   ├── CraftingSystem.js   # Recipe matching and crafting
-    │   ├── TimeSystem.js       # Day/night cycle, sky color interpolation
-    │   ├── LightingSystem.js   # Overlay darkness per tile, torch/lava glow
-    │   └── SaveManager.js      # localStorage save/load
-    └── utils/
-        ├── constants.js        # All game constants (tile IDs, player stats, etc.)
-        ├── TileRegistry.js     # 45 tile definitions (solid, hardness, drops, lightEmit)
-        ├── ItemRegistry.js     # All item definitions (tools, food, materials)
-        └── RecipeRegistry.js   # 40+ crafting/smelting recipes
-```
+
+The architecture is intentionally small. `Game` owns the core renderer/world/player/inventory/time/mob loop. Focused controllers layer progression behavior over those core systems instead of turning `Game.js` into a large quest/progression class.
 
 ---
 
-## Architecture Overview
+## Startup and controller composition
 
-### Scene Graph
+`src/main.js` currently initializes in this order:
 
-```
-Boot → Preload → MainMenu → Game ──launch──► HUDScene
-                                 ──launch──► InventoryScene (toggle)
-                                 ──launch──► CraftingScene  (toggle)
-                                 ──launch──► FurnaceScene   (toggle)
-                              → GameOver
-```
+1. `new Game(canvas)`
+2. connect mob loot to the existing `DropSystem`
+3. `FirstSessionController`
+4. `ForgeController`
+5. `ResourceProgressionController`
+6. `NightPressureController`
+7. `FinaleController`
+8. `game.start()`
 
-**Key rule:** `HUDScene` is launched **only** from `Game.create()` via `scene.launch()`. `MainMenu` and `GameOver` must NOT start HUDScene — they only call `scene.start('Game')`.
+Several controllers wrap existing methods (`SaveManager.save`, `MobSystem.update`, player interactions) to keep changes incremental. **Order matters.** When adding another wrapper:
 
-### Phaser Config (`src/main.js`)
+- delegate to the previously bound implementation rather than replacing the whole path
+- preserve incoming state with object spread when extending saves
+- do not bypass first-session hostile protection or night-pressure configuration
+- add focused composition/regression tests for cross-system behavior
 
-```js
-const config = {
-  type: Phaser.CANVAS,        // NOT AUTO — WebGL fails silently on iOS Safari
-  parent: 'game-container',
-  scale: {
-    mode: Phaser.Scale.FIT,
-    autoCenter: Phaser.Scale.CENTER_BOTH,
-    width: 1280,               // MUST be inside scale{}, not top-level
-    height: 720,
-  },
-  audio: { noAudio: true },   // Disables Web Audio API (iOS requires user gesture)
-  input: { activePointers: 4 },
-  scene: [Boot, Preload, MainMenu, Game, HUDScene, InventoryScene, CraftingScene, FurnaceScene, GameOver],
-};
-```
-
-### World
-
-- **Size:** 4096 × 512 tiles (128 × 16 chunks of 32×32)
-- **Generation:** Seeded Perlin noise FBM (inline, no external dependency), 4 biomes: Forest, Desert, Snow, Jungle
-- **Storage:** `Map<string, Uint16Array>` — lazy generation on first access, chunks never serialized in MVP
-- **Tile access:** `getTile(tx, ty)` / `setTile(tx, ty, id)` — bit-shift indexing: `(ty & 31) << 5 | (tx & 31)`
-- **Physics:** `World.moveAndCollide(px, py, pw, ph, mvx, mvy, dt)` — custom AABB, returns `{ x, y, vx, vy, onGround, onCeiling, onWall }`
-
-### Chunk Rendering
-
-`ChunkRenderer` keeps a `Map<key, {image, canvas, ctx}>` of active chunks. Each 32×32 chunk is an HTML `<canvas>` element uploaded as a Phaser texture via `scene.textures.addCanvas()`. Tiles are drawn using 44 individual Canvas2D draw functions (per tile type) with hand-crafted pixel art.
-
-### HUD Communication
-
-`Game.update()` calls `_emitHUD()` every 200ms, which writes a state object to `this.registry.set('hudState', {...})`. `HUDScene._refresh()` polls `this.registry.get('hudState')` every 100ms via a Phaser time event.
-
-### Input
-
-`TouchControls` handles both virtual joystick (touch) and keyboard (WASD/arrows/SPACE/E/SHIFT). `poll()` merges both into a single state object. `flush()` clears one-shot flags (`jumpJustPressed`, `inventoryJustPressed`).
+This is pragmatic for the current small project, but if controller interception grows materially beyond the 0.3 slice, introduce explicit events/hooks rather than stacking more wrappers indefinitely.
 
 ---
 
-## Critical Bug Fixes (history)
+## Core game loop
 
-These are bugs that were discovered and fixed. Do NOT regress them.
+`Game._loop()`:
 
-### 1. `fillGradientStyle` crash (Canvas renderer)
-**File:** `src/scenes/MainMenu.js` — `_buildBackground()`
-**Bug:** `sky.fillGradientStyle(...)` is WebGL-only. On `Phaser.CANVAS` it silently corrupts Graphics state so nothing renders.
-**Fix:** Replaced with multiple `fillStyle` + `fillRect` calls.
+1. polls controls
+2. skips gameplay logic while the game is in a paused/dead state
+3. processes inventory/flashlight/hotbar one-shots
+4. updates `Player`
+5. detects death
+6. resolves interactive block requests
+7. updates targeted-block HUD
+8. updates floating drops
+9. streams/remeshes chunks as needed
+10. updates outline/flashlight
+11. updates mobs (through progression wrappers)
+12. advances time/lighting
+13. updates HUD/debug state
+14. autosaves periodically
+15. renders the Three.js scene
 
-### 2. CSS flex conflict with Phaser ScaleManager
-**File:** `index.html` — `#game-container`
-**Bug:** `display:flex; align-items:center; justify-content:center` double-centered the canvas when Phaser also applied margin-based centering.
-**Fix:** Removed flex. `#game-container` is now `position:fixed; inset:0; overflow:hidden`.
+Keep gameplay timing in seconds using `dt`; avoid frame-count-dependent mechanics.
 
-### 3. HUDScene double-start
-**Bug:** `MainMenu` and `GameOver` both called `scene.start('HUDScene')` after `scene.start('Game')`, causing HUD to stop and restart unreliably.
-**Fix:** HUDScene is launched exclusively from `Game.create()` via `scene.launch()`. Other scenes never touch HUDScene.
+---
 
-### 4. Wrong Vite base path
-**File:** `vite.config.js`
-**Bug:** `base: '/Minecraft-Dupe/'` caused 404s on GitHub Pages.
-**Fix:** `base: './'` — relative paths work regardless of repo name.
+## World generation
 
-### 5. iOS Safari "Params are not set" (three simultaneous fixes)
-**File:** `src/main.js` + `index.html`
-**Bug:** Phaser ScaleManager threw "Params are not set" on iOS Safari. Three root causes:
-  1. `#game-container` reported 0 dimensions on iOS before layout settled
-  2. `width`/`height` were at top-level Phaser config (ignored by ScaleManager)
-  3. Web Audio API `resume()` called without user gesture → Promise rejection
+Important constants in `src/utils/constants.js`:
 
-**Fixes applied:**
-  1. `index.html`: `#game-container { position: fixed; inset: 0; overflow: hidden; }` — forces non-zero dimensions before Phaser boots
-  2. `main.js`: `width`/`height` moved inside `scale: {}` block
-  3. `main.js`: `audio: { noAudio: true }` added
+- chunk width/depth: **16 blocks**
+- vertical world height: **128 blocks**
+- sea level: **64**
+- render distance: **5 chunks** in each direction
+- full day/night cycle: **12 minutes**
 
-### 6. iOS Safari WebGL black screen
-**File:** `src/main.js`
-**Bug:** `type: Phaser.AUTO` chose WebGL on iOS Safari, which has silent context failures → black screen.
-**Fix:** `type: Phaser.CANVAS` forced.
+`World` uses seeded 2D/3D FBM noise for terrain, biomes, caves, and ores. Current terrain biomes are forest, desert, snow, and mountains.
 
-### 7. "phaser does not resolve to a valid URL" (GitHub Pages)
-**Bug:** Browser loading raw `src/main.js` instead of built bundle. `import 'phaser'` is a Node bare specifier — invalid in browser ES modules.
-**Root cause:** GitHub Pages was serving source files via Jekyll (default for repos with no special config) rather than built dist/.
-**Fix required:**
-  - Delete any Jekyll workflow from `.github/workflows/`
-  - Keep only `deploy.yml` (the one in this repo)
-  - Set GitHub Pages source to **"GitHub Actions"** in repo Settings → Pages
-  - Merge feature branch → `main` (deploy.yml only triggers on `main`)
+The fresh-spawn search deliberately chooses a nearby reasonably flat forest/mountain location so the first-session loop has accessible wood.
 
-### 8. Portrait-mode warning on desktop
-**File:** `index.html`
-**Bug:** Rotate-to-landscape message appeared on laptop browsers in certain window sizes.
-**Fix:** Media query uses `(pointer: coarse)` to only show on touchscreen devices:
-```css
-@media screen and (orientation: portrait) and (pointer: coarse) {
-  #rotate-msg { display: flex; }
-}
+### Ore bands used by 0.3 progression
+
+- Coal: below Y64
+- Iron: below Y48; requires Stone Pickaxe+
+- Gold: below Y32; requires Iron Pickaxe+
+- Diamond: below Y16; requires Iron Pickaxe+
+
+Ore tiers are evaluated rare/deep first so common coal cannot shadow rarer material. The fixed 0.3 seed has a regression test requiring useful ore headroom around spawn. Diamond's current noise cutoff is `> 0.92`; this was tuned because the previous `> 0.93` made nearby diamond mathematically absent for the intended progression footprint.
+
+### World edits
+
+Procedural chunks are regenerated from the seed. Player changes are persisted as **sparse block edits** rather than serializing every generated chunk. Legacy full-chunk saves can migrate into sparse edits.
+
+Do not revert to storing full generated chunks unless there is a demonstrated need; it unnecessarily inflates localStorage and complicates migration.
+
+---
+
+## Block and item identity invariants
+
+IDs in `src/utils/constants.js` are save data. **Never reorder or silently reuse numeric IDs.**
+
+Two compatibility decisions are especially important:
+
+- `B.FURNACE` remains numeric block ID **25**, but the 0.3 game presents/uses it as the **Stone Forge** base station.
+- item ID **103** is now **Forgebrand**. `ITEMS.DIAMOND_SWORD` remains only as a legacy symbolic alias to the same numeric ID so old saves do not lose their top-tier weapon.
+
+When changing saved identity, prefer migration or a compatible alias over breaking existing local saves.
+
+---
+
+## First-session progression
+
+`FirstSessionGuide` / `FirstSessionController` teach the real progression loop through play rather than a separate tutorial level.
+
+Fresh saves begin with an empty inventory rather than the old generous starter kit. Current path:
+
+1. move + look + jump
+2. gather Oak Logs
+3. open Inventory / Hand Crafting
+4. make Planks
+5. make Sticks
+6. craft Wooden Pickaxe
+7. equip it
+8. mine stone
+9. place a block / establish foothold
+10. build the first Stone Forge
+
+If fundamentals are completed after dark, hostiles remain suppressed until daylight so the tutorial cannot suddenly release enemies on top of the player. Protected tutorial nights do **not** consume Night 1 progression.
+
+Opening the first Stone Forge ends the persistent onboarding card and hands progression to the forge UI/objective systems.
+
+---
+
+## Crafting and forge progression
+
+### Hand crafting
+
+Hand crafting is intentionally limited to basic survival/building recipes. It must not provide a back door around forge tiers or refining.
+
+Notably:
+
+- raw metal ore cannot become finished metal equipment directly
+- advanced weapons/tools are forge-only
+- `8 Cobblestone → Stone Forge` is part of the discoverable first-session path
+
+Craft operations are transactional: if ingredients or output capacity fail, inventory state rolls back rather than deleting/duplicating resources.
+
+### Forge tiers
+
+**Stone Forge**
+- refine Iron Ore + Coal → Iron Ingot
+
+**Iron Forge**
+- upgrade cost: 6 Iron Ingots + 4 Cobblestone
+- adds iron equipment crafting
+- adds gold refining
+
+**Master Forge**
+- upgrade cost: 4 Gold Ingots + 4 Iron Ingots + 2 Diamond Ore
+- adds diamond refining
+- unlocks Diamond Pickaxe
+- unlocks Forgebrand masterwork
+
+Forgebrand recipe:
+
+- 2 Refined Diamond
+- 2 Gold Ingots
+- 2 Iron Ingots
+- 1 Stick
+
+Per-station tier, processing job/progress, and buffered output are saved. Breaking a forge loses the station's tier investment but salvages committed refining input/fuel and completed buffered output so destruction cannot silently delete those resources.
+
+---
+
+## Combat and enemy identity
+
+The current roster is Forge-original while retaining three easy-to-read pressure roles:
+
+### Ashbound
+
+Charred melee pursuer with ember fractures. Close-range pressure. May drop Coal Ore.
+
+### Shardcaster
+
+Faceted mineral ranged enemy. Maintains distance and fires spinning crystal shards. May drop Cobblestone.
+
+### Slagburst
+
+Low volcanic/slag creature. Closes distance, fuses, and explodes, damaging nearby terrain. May drop Coal Ore if killed before detonation; self-detonation does not create loot.
+
+Enemy loot deliberately feeds existing survival/forge loops instead of creating a separate collectible economy.
+
+The inventory `PlayerPreview` uses a Forge-specific frontier-smith presentation rather than the earlier Steve-like styling.
+
+---
+
+## Night pressure and defensive preparation
+
+Night difficulty is controlled by `NightPressureSystem` and caps rather than scaling forever:
+
+### Night 1 — Baseline
+- max 5 hostiles
+- ~7s spawn cadence
+- Ashbound + limited Shardcasters
+- no Slagburst pressure
+
+### Night 2 — Rising
+- max 9 hostiles
+- ~4.8s cadence
+- tighter spawn distance
+- small Slagburst chance
+
+### Night 3+ — Peak
+- max 13 hostiles
+- ~3.4s cadence
+- highest mixed pressure
+- profile caps here even as the displayed night number continues increasing
+
+The HUD warns shortly before sunset.
+
+Placed **Torches and Glowstone** suppress hostile spawn candidates within an 8-block radius. The player flashlight is visual-only and does not count as defensive preparation.
+
+Night number and active-night state persist, so save/load cannot reset or double-count escalation.
+
+---
+
+## Finale / win state
+
+The 0.3 slice has an explicit finish state managed by `FinaleSystem` / `FinaleController`.
+
+Late-game path:
+
+1. reach Iron Forge → masterwork objective appears
+2. upgrade to Master Forge
+3. craft Forgebrand
+4. reach Peak pressure (Night 3+)
+5. survive **60 seconds** during the final stand
+6. land at least **one Forgebrand killing blow**
+
+Both survival time and the Forgebrand kill are required.
+
+An unfinished attempt resets if:
+
+- the player dies
+- Peak Night ends before completion
+- Master Forge eligibility is lost
+- Forgebrand is no longer held
+
+Success persists permanently and displays `THE FORGE HOLDS`. The player can choose **Continue this world** afterward. Reloading a completed save preserves the achievement but does not repeatedly block play with the completion modal.
+
+---
+
+## Input
+
+### Desktop
+
+- WASD / arrows: movement
+- mouse: look
+- Space: jump
+- Shift: sprint
+- Left Ctrl: sneak
+- left mouse: attack / hold to mine
+- X: alternate break input
+- right mouse: place / interact
+- E: inventory
+- F: flashlight
+- 1–9 or wheel: hotbar selection
+- F3: debug overlay
+
+Desktop uses Pointer Lock.
+
+### Touch
+
+Coarse-pointer devices use separate movement/look touch zones plus on-screen Jump, Break, Place, Inventory, and Flashlight buttons. The virtual movement stick enables sprint near its outer range. Touch cancel/visibility/blur paths clear held controls to avoid stuck input.
+
+---
+
+## Save model
+
+`SaveManager`:
+
+- key: `forge_3d_v1`
+- current version: `2`
+- supports versions 1 and 2
+- validates core player/inventory/time/world shape before accepting a save
+
+Current composed state includes, as applicable:
+
+- player transform/stats
+- inventory/hotbar
+- world sparse edits
+- time/day phase
+- first-session progression
+- forge stations/jobs/output
+- night-pressure progression
+- finale progression/completion
+
+Normal play autosaves about every 30 seconds. Important progression transitions save immediately. Save errors are surfaced in game state rather than treated as silent success.
+
+Persistence is browser-local only; there is no cloud/account save layer.
+
+---
+
+## Tests and regression expectations
+
+Run:
+
+```bash
+npm test
+npm run build
 ```
 
+Current tests cover more than unit-level helpers. They protect important game invariants including:
+
+- input interruption and one-shot controls
+- first-session sequence and safe spawn resources
+- inventory stack/resource conservation
+- atomic crafting
+- sparse world persistence/migration
+- ore generation/order and progression headroom
+- mining tool/depth gates
+- forge tiers/refining/save/destruction behavior
+- night escalation and lighting defense
+- Forge-original enemy identity/drop contracts
+- finale requirements, resets, save/load, and completion persistence
+
+When changing one of those systems, extend the regression contract rather than deleting an assertion simply to make CI green.
+
 ---
 
-## Deployment Setup
+## Current limitations / next work
 
-### GitHub Actions Workflow (`.github/workflows/deploy.yml`)
+### #29 — vertical-slice playtest and tuning
 
-```yaml
-on:
-  push:
-    branches: [main]
-  workflow_dispatch:
+The assembled loop still needs the intended full fresh-save acceptance pass. Validate:
 
-jobs:
-  build:
-    - npm ci
-    - npm run build
-    - upload-pages-artifact path: dist
+- no progression deadlocks
+- first objective clarity
+- gathering/refining grind
+- Night 1 fairness and later-night pressure
+- actual 20–30 minute completion time
+- death/respawn and save/load across the full loop
+- touch/mobile usability
+- performance under later-night combat and chunk streaming
 
-  deploy:
-    - actions/deploy-pages@v4
+Do not expand the sandbox until material failures found there are addressed.
+
+### #44 — item sprite polish
+
+Iron Ingot, Gold Ingot, and Refined Diamond still use generic inventory fallback visuals. Forgebrand also currently inherits the legacy top-tier sword sprite because item ID 103 is preserved for save compatibility. Give these items distinct Forge-readable sprites without changing their numeric IDs.
+
+### Other intentional omissions
+
+- no armor gameplay system yet
+- no audio system
+- no multiplayer
+- no farming/NPC village loop
+- no enchanting/large tech tree
+- no procedural dungeon campaign
+- no cloud saves
+
+These are omissions, not promises for the next release.
+
+---
+
+## Deployment
+
+`.github/workflows/deploy.yml` runs:
+
+```text
+checkout
+setup Node 20
+npm ci
+npm test
+npm run build
 ```
 
-**Requirements to make this work:**
-1. Go to repo Settings → Pages → Source → select **"GitHub Actions"** (not "Deploy from branch")
-2. Make sure no other workflow is deploying to GitHub Pages
-3. Push to `main` branch to trigger
+Pull requests validate but do not deploy. Successful `main` runs upload `dist/` and deploy through GitHub Pages.
 
-### Feature Branch
-
-Current development is on: `claude/recreate-handoff-docs-KZdmy`
-
-This branch cannot deploy to GitHub Pages directly because the `github-pages` environment only allows `main`. To deploy: merge this branch into `main`.
+Do not weaken PR validation to make deployment faster; the current suite is small enough to keep test + build as the merge gate.
 
 ---
 
-## Known Issues & TODOs
+## Historical documentation
 
-### Performance: LightingSystem
-**File:** `src/systems/LightingSystem.js` — `_getTileLight()`
+`HANDOFF_SOURCE_1.md` and `HANDOFF_SOURCE_2.md` came from older prototypes and are not current implementation guidance. Their active-tree versions are reduced to historical stubs; use Git history only if the old prototype context is specifically needed.
 
-The current implementation loops over a 29×29 radius (radius=14) for **every visible tile** every 100ms. For a 1280×720 viewport at zoom=2, that's ~3,000 tiles × 841 iterations = ~2.5M ops per update. This will cause frame drops, especially on mobile.
+The current sources of truth are:
 
-**Suggested fix:** Pre-compute a light map for the visible region once per camera move, then do a single pass to render the overlay.
-
-### Chest UI Not Implemented
-`src/scenes/Game.js` — `_placeOrInteract()`: clicking a chest logs TODO and returns. Chest contents are never stored.
-
-### Chunk Save/Load Incomplete
-`Game._serializeModifiedChunks()` returns `{}` and `_loadChunkData()` is empty. Modified world tiles are lost on reload (only player stats, inventory, and time persist).
-
-### Bread Recipe Requires Wheat
-`RecipeRegistry.js` has a bread recipe requiring `wheat`, but `wheat` is never generated in the world or obtainable. Recipe will never be craftable.
-
-### CraftingScene Color Swatch Placeholder
-`src/scenes/CraftingScene.js` — `_drawRecipe()`: the item color is hardcoded to `0xaaaaaa`. Should look up `ItemRegistry.get(recipe.result.itemId)?.color`.
-
-### Howler Installed but Unused
-`howler` is in dependencies but never imported. Either wire up sound effects or remove it from `package.json` to reduce bundle size.
-
----
-
-## Game Constants Reference
-
-**`src/utils/constants.js`**
-
-| Constant | Value | Notes |
-|---|---|---|
-| TILE_SIZE | 16 | pixels |
-| CHUNK_SIZE | 32 | tiles per chunk side |
-| WORLD_WIDTH | 4096 | tiles (128 chunks) |
-| WORLD_HEIGHT | 512 | tiles (16 chunks) |
-| GAME_WIDTH | 1280 | canvas resolution |
-| GAME_HEIGHT | 720 | canvas resolution |
-| CAMERA_ZOOM | 2 | default zoom (not used by ScaleManager) |
-| PLAYER.WALK_SPEED | 150 | px/s |
-| PLAYER.SPRINT_SPEED | 240 | px/s |
-| PLAYER.JUMP_VEL | -420 | px/s upward |
-| PLAYER.GRAVITY | 900 | px/s² |
-| PLAYER.MAX_HP | 20 | (10 hearts) |
-| PLAYER.MAX_HUNGER | 20 | (10 drumsticks) |
-| PLAYER.REACH_PX | 80 | 5 tiles reach |
-| HOTBAR_SIZE | 9 | |
-| INV_ROWS | 3 | main inventory rows |
-| INV_COLS | 9 | main inventory cols |
-| MAX_STACK | 64 | default (tools: 1) |
-| DAY_DURATION | 24000 | ms per full day |
-| MAX_MOBS | 50 | |
-| MOB_DESPAWN_DIST | 32 | tiles |
-
----
-
-## Tile IDs (never reorder — saves would break)
-
-```
-0=AIR  1=GRASS  2=DIRT  3=STONE  4=SAND  5=GRAVEL  6=BEDROCK
-7=SNOW_DIRT  8=COAL_ORE  9=IRON_ORE  10=GOLD_ORE  11=DIAMOND_ORE
-12=HELLSTONE  13=OBSIDIAN  14=SANDSTONE  15=ICE
-16=OAK_LOG  17=PINE_LOG  18=JUNGLE_LOG
-19=OAK_LEAVES  20=PINE_LEAVES  21=JUNGLE_LEAVES
-22=CACTUS  23=COBBLESTONE  24=OAK_PLANKS  25=PINE_PLANKS
-26=STONE_BRICK  27=GLASS  28=TORCH  29=CHEST
-30=CRAFTING_TABLE  31=FURNACE  32=WATER  33=LAVA
-34=GRASS_SNOW  35=FLOWER_RED  36=FLOWER_YELLOW  37=TALL_GRASS
-38=VINE  39=GLOWSTONE  40=NETHERRACK  41=CLAY
-42=IRON_BLOCK  43=GOLD_BLOCK  44=DIAMOND_BLOCK
-```
-
----
-
-## Layer Y-Boundaries (tiles)
-
-```
-0–79:   Sky (AIR)
-80–119: Surface zone
-120–279: Underground
-280–429: Cavern
-430–511: Underworld (Hellstone, Lava, Lava Slime mobs)
-509–511: Bedrock
-```
-
----
-
-## Mob Definitions
-
-| ID | Name | HP | Damage | Speed | Drops |
-|---|---|---|---|---|---|
-| slime | Slime | 8 | 2 | 40 | slimeball |
-| zombie | Zombie | 20 | 3 | 55 | rotten_flesh, iron_ingot (5%) |
-| skeleton | Skeleton | 16 | 2 | 65 | bone, arrow×2 |
-| spider | Spider | 14 | 2 | 80 | string, spider_eye (30%) |
-| creeper | Creeper | 20 | 0 | 55 | gunpowder |
-| pig | Pig | 10 | 0 | 50 | raw_pork (passive) |
-| rabbit | Rabbit | 3 | 0 | 90 | raw_meat (passive) |
-| lava_slime | Lava Slime | 16 | 5 | 35 | magma_cream |
-
----
-
-## Tool Tiers
-
-| Tier | Material | Pickaxe Durability | Axe | Shovel | Sword |
-|---|---|---|---|---|---|
-| 0 | Wood | 60 | 60 | 60 | 60 |
-| 1 | Stone | 132 | 132 | 132 | 132 |
-| 2 | Iron | 251 | 251 | 251 | 251 |
-| 3 | Gold | 33 | — | — | 33 |
-| 4 | Diamond | 1562 | 1562 | — | 1562 |
+1. the code on `main`
+2. this `HANDOFF.md`
+3. `README.md`
+4. roadmap issue #20 and its child issues

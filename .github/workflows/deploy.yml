@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
   pages: write
   id-token: write
 
@@ -27,25 +27,11 @@ jobs:
           node-version: 20
           cache: npm
 
-      - name: Refresh patched transitive lockfile dependencies
-        if: github.event_name == 'pull_request' && github.head_ref == 'feature/52-dependency-audit'
-        run: |
-          git fetch origin "$GITHUB_HEAD_REF"
-          git checkout -B "$GITHUB_HEAD_REF" "origin/$GITHUB_HEAD_REF"
-          npm audit fix
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add package-lock.json
-          if ! git diff --cached --quiet; then
-            git commit -m "chore: refresh patched transitive dependencies"
-            git push origin "HEAD:$GITHUB_HEAD_REF"
-          fi
-
       - name: Install dependencies
         run: npm ci
 
       - name: Dependency audit
-        run: npm audit --json
+        run: npm audit --audit-level=high
 
       - name: Test
         run: npm test

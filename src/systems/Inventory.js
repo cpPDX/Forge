@@ -101,14 +101,28 @@ export class Inventory {
   }
 
   load(data) {
-    if (!data) return;
+    if (!data) return [];
+    const overflowItems = [];
     if (data.slots) {
       // Reset first so restoring a snapshot cannot leave stale slot contents.
       for (const slot of this._slots) { slot.id = B.AIR; slot.count = 0; }
+
+      // Preserve normal stacks in their saved positions. Older builds could
+      // create stacks above 64, so split only the excess instead of discarding it.
       data.slots.forEach(([id, count], i) => {
-        if (i < this._slots.length) { this._slots[i].id = id; this._slots[i].count = count; }
+        if (i >= this._slots.length || id === B.AIR || count <= 0) return;
+        const keep = Math.min(count, MAX_STACK);
+        this._slots[i].id = id;
+        this._slots[i].count = keep;
+        if (count > keep) overflowItems.push({ id, count: count - keep });
       });
+
+      // Repack legacy overstack excess into valid stacks where capacity exists.
+      for (const item of overflowItems) {
+        item.count = this.addItem(item.id, item.count);
+      }
     }
     if (data.selectedSlot != null) this.selectedSlot = data.selectedSlot;
+    return overflowItems.filter(item => item.count > 0);
   }
 }

@@ -51,13 +51,16 @@ export function drawItemSprite(ctx, id, size = 16) {
     case ITEMS.WOODEN_SWORD:    _sword(rect, px, '#c8a060', '#8b5e1a'); break;
     case ITEMS.STONE_SWORD:     _sword(rect, px, '#aaaaaa', '#888888'); break;
     case ITEMS.IRON_SWORD:      _sword(rect, px, '#d8e8f8', '#aabbcc'); break;
-    case ITEMS.DIAMOND_SWORD:   _sword(rect, px, '#44ddff', '#22aacc'); break;
+    case ITEMS.FORGEBRAND:      _forgebrand(rect, px); break;
     case ITEMS.APPLE:           _apple(rect, px);  break;
     case ITEMS.STICK:           _stick(rect, px);  break;
     case ITEMS.WOODEN_PICKAXE:  _pickaxe(rect, px, '#c8a060', '#8b5e1a'); break;
     case ITEMS.STONE_PICKAXE:   _pickaxe(rect, px, '#aaaaaa', '#888888'); break;
     case ITEMS.IRON_PICKAXE:    _pickaxe(rect, px, '#d8e8f8', '#aabbcc'); break;
     case ITEMS.DIAMOND_PICKAXE: _pickaxe(rect, px, '#44ddff', '#22aacc'); break;
+    case ITEMS.IRON_INGOT:      _ingot(rect, px, '#b9c1c8', '#edf3f7', '#747d85'); break;
+    case ITEMS.GOLD_INGOT:      _ingot(rect, px, '#dcae22', '#ffe66a', '#9a6814'); break;
+    case ITEMS.REFINED_DIAMOND: _refinedDiamond(rect, px); break;
     // ── Default: solid color swatch ──────────────────────────────────────────
     default: rect(0, 0, 16, 16, '#555'); break;
   }
@@ -301,6 +304,53 @@ function _sword(rect, px, bladeColor, handleColor) {
   for (let i = 0; i < 5; i++) px(4 - i, 8 + i, handleColor);
   // tip highlight
   px(13, 1, '#ffffff');
+}
+
+function _forgebrand(rect, px) {
+  // Heavy dark-steel blade with a heated fuller, visually distinct from the
+  // normal bright metal swords while still reading clearly at 16×16.
+  for (let i = 0; i < 9; i++) {
+    px(14 - i, i, '#34383b');
+    px(13 - i, i, '#8f989e');
+  }
+  for (let i = 1; i < 7; i++) px(13 - i, i + 1, '#ff7a1a');
+  px(14, 0, '#f4f0dc');
+  px(12, 2, '#ffb347');
+  px(9, 5, '#ffb347');
+
+  // Broad forged guard and leather-wrapped grip.
+  rect(4, 9, 7, 1, '#6d3a1d');
+  rect(5, 10, 2, 1, '#c45b20');
+  for (let i = 0; i < 5; i++) {
+    px(5 - i, 10 + i, '#34231c');
+    if (i < 4) px(6 - i, 10 + i, '#7d4b2a');
+  }
+  rect(0, 14, 3, 1, '#b85c24');
+  px(0, 15, '#ff7a1a');
+}
+
+function _ingot(rect, px, base, light, dark) {
+  // Compact stepped bar silhouette so processed metal does not resemble raw ore.
+  rect(5, 4, 6, 1, light);
+  rect(4, 5, 8, 2, light);
+  rect(3, 7, 10, 4, base);
+  rect(4, 11, 8, 2, dark);
+  rect(5, 13, 6, 1, dark);
+  rect(4, 7, 1, 3, lighten(base));
+  px(6, 6, '#ffffff');
+}
+
+function _refinedDiamond(rect, px) {
+  // A cut gem silhouette, intentionally different from the stone-backed ore sprite.
+  rect(6, 2, 4, 1, '#d8fbff');
+  rect(4, 3, 8, 2, '#84efff');
+  rect(3, 5, 10, 4, '#4bd5ed');
+  rect(4, 9, 8, 2, '#2aafc7');
+  rect(6, 11, 4, 2, '#197e99');
+  rect(7, 13, 2, 1, '#125d74');
+  rect(7, 4, 2, 6, '#bdf8ff');
+  px(5, 5, '#ffffff');
+  px(10, 6, '#6eeaff');
 }
 
 function _apple(rect, px) {

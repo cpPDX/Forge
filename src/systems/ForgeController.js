@@ -20,7 +20,13 @@ export class ForgeController {
 
   init() {
     const saved = this._game._save.load();
-    if (saved?.forge) this._system.load(saved.forge, this._game._world);
+    if (saved?.forge) {
+      try {
+        this._system.load(saved.forge, this._game._world);
+      } catch (error) {
+        console.error('Forge save load failed:', error);
+      }
+    }
 
     this._installForgeName();
     this._wrapSaveState();
@@ -70,7 +76,10 @@ export class ForgeController {
       originalSetBlock(x, y, z, id, skipGravity);
       if (previous !== B.FURNACE || id === B.FURNACE) return;
 
-      this._system.removeStation([x, y, z]);
+      const salvage = this._system.removeStation([x, y, z]);
+      for (const stack of salvage) {
+        this._game._drops.spawn(x + 0.5, y + 0.75, z + 0.5, stack.id, stack.count);
+      }
       if (this._currentPos && this._samePos(this._currentPos, [x, y, z])) this.close({ resumePointer: false });
       this._persist();
     };
@@ -117,8 +126,6 @@ export class ForgeController {
   _releasePointerForUi() {
     this._hidePlayOverlay();
     if (document.pointerLockElement) document.exitPointerLock?.();
-    // Controls reacts to pointerlockchange by showing its resume overlay. Keep the
-    // station modal authoritative while it is open.
     setTimeout(() => {
       if (this._view.isOpen) this._hidePlayOverlay();
     }, 0);
@@ -183,8 +190,9 @@ export class ForgeController {
         id: option.id,
         name: option.name,
         ingredients: option.ingredients.map(item => `${item.count}× ${this._name(item.id)}`).join(' + '),
-        enabled: option.ingredients.every(item => inventory.countOf(item.id) >= item.count)
-          && inventory.canAdd(option.result.id, option.result.count),
+        // Ingredient consumption can free the slot needed for the result, so the
+        // system remains the authority on final capacity after consumption.
+        enabled: option.ingredients.every(item => inventory.countOf(item.id) >= item.count),
       })),
       upgrade: upgrade ? {
         name: upgrade.name,

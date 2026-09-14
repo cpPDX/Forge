@@ -9,6 +9,7 @@ import {
   harvestRequirement,
   canHarvest,
   RESOURCE_LEADS,
+  depthGuidance,
 } from '../src/systems/ResourceProgression.js';
 import { ResourceProgressionController } from '../src/systems/ResourceProgressionController.js';
 import { World } from '../src/world/World.js';
@@ -37,6 +38,44 @@ test('resource requirements expose the exact minimum tool and depth leads', () =
   assert.equal(RESOURCE_LEADS.iron.maxY, 47);
   assert.equal(RESOURCE_LEADS.gold.maxY, 31);
   assert.equal(RESOURCE_LEADS.diamond.maxY, 15);
+});
+
+test('depth guidance maps the current Y level to the next resource threshold', () => {
+  assert.deepEqual(depthGuidance(64.9), { level: 64, detail: 'Iron below Y48' });
+  assert.deepEqual(depthGuidance(47.9), { level: 47, detail: 'Iron zone · Gold below Y32' });
+  assert.deepEqual(depthGuidance(31.9), { level: 31, detail: 'Gold zone · Diamond below Y16' });
+  assert.deepEqual(depthGuidance(15.9), { level: 15, detail: 'Diamond zone' });
+});
+
+test('depth indicator waits for the first forge and skips unchanged per-frame renders', () => {
+  const renders = [];
+  const game = {
+    _player: { y: 64.8 },
+    _firstSessionController: { complete: false },
+    _hud: { updateDebug() {} },
+  };
+  const controller = new ResourceProgressionController(game, {
+    depthView: { render(view) { renders.push(view); } },
+  });
+  controller._wrapDepthIndicator();
+
+  game._hud.updateDebug();
+  game._hud.updateDebug();
+  assert.deepEqual(renders, [null], 'onboarding keeps the depth readout hidden without repeated DOM work');
+
+  game._firstSessionController.complete = true;
+  game._hud.updateDebug();
+  game._hud.updateDebug();
+  assert.deepEqual(renders.at(-1), { level: 64, detail: 'Iron below Y48' });
+  assert.equal(renders.length, 2, 'unchanged level is not rendered every frame');
+
+  game._player.y = 47.8;
+  game._hud.updateDebug();
+  assert.deepEqual(renders.at(-1), { level: 47, detail: 'Iron zone · Gold below Y32' });
+
+  game._player.y = 47.1;
+  game._hud.updateDebug();
+  assert.equal(renders.length, 3, 'movement within the same integer Y level does not redraw');
 });
 
 test('under-tier mining is blocked without suppressing the normal break handler entirely', () => {

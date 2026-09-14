@@ -1,15 +1,20 @@
 import { B } from '../utils/constants.js';
-import { canHarvest, harvestRequirement, RESOURCE_LEADS } from './ResourceProgression.js';
+import { canHarvest, depthGuidance, harvestRequirement, RESOURCE_LEADS } from './ResourceProgression.js';
+import { ResourceDepthView } from '../ui/ResourceDepthView.js';
 
 export class ResourceProgressionController {
-  constructor(game) {
+  constructor(game, { depthView = null } = {}) {
     this._game = game;
+    this._depthView = depthView;
+    this._lastDepthKey = null;
   }
 
   init() {
     this._wrapMiningGate();
     this._wrapTargetLabel();
     this._installMiningLeads();
+    if (!this._depthView && typeof document !== 'undefined') this._depthView = new ResourceDepthView();
+    if (this._depthView) this._wrapDepthIndicator();
     return this;
   }
 
@@ -73,6 +78,29 @@ export class ResourceProgressionController {
       const met = canHarvest(blockId, this._heldItemId());
       originalSetLabel(`${label} · ${met ? requirement.name + '+' : 'Requires ' + requirement.name}`);
     };
+  }
+
+  _wrapDepthIndicator() {
+    const hud = this._game._hud;
+    const originalUpdateDebug = hud.updateDebug.bind(hud);
+
+    hud.updateDebug = (...args) => {
+      originalUpdateDebug(...args);
+      const view = this._depthViewState();
+      const key = view ? `${view.level}|${view.detail}` : 'hidden';
+      if (key === this._lastDepthKey) return;
+      this._lastDepthKey = key;
+      this._depthView.render(view);
+    };
+  }
+
+  _depthViewState() {
+    if (this._game._firstSessionController?.complete !== true) return null;
+
+    const debug = globalThis.document?.getElementById?.('debug');
+    if (debug?.style?.display === 'block') return null;
+
+    return depthGuidance(this._game._player?.y ?? 0);
   }
 
   _installMiningLeads() {

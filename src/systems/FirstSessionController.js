@@ -13,6 +13,7 @@ export class FirstSessionController {
     this._freshSave = false;
   }
 
+  get complete() { return this._guide.complete; }
   get allowsHostiles() { return this._guide.allowsHostiles; }
 
   init() {

@@ -32,7 +32,8 @@ export class FirstSessionGuide {
   }
 
   get step() { return STEPS[this._stepIndex]; }
-  get fundamentalsComplete() { return this.step === 'prepare' || this.step === 'complete'; }
+  get complete() { return this.step === 'complete'; }
+  get fundamentalsComplete() { return this.step === 'prepare' || this.complete; }
   get allowsHostiles() { return this._hostilesUnlocked; }
 
   markReturningPlayer() {

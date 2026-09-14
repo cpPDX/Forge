@@ -85,3 +85,17 @@ export const RESOURCE_LEADS = {
     hint: 'Diamond veins form below Y16. Bring an Iron Pickaxe.',
   },
 };
+
+export function depthGuidance(y) {
+  const level = Math.floor(Number.isFinite(y) ? y : 0);
+  if (level > RESOURCE_LEADS.iron.maxY) {
+    return { level, detail: 'Iron below Y48' };
+  }
+  if (level > RESOURCE_LEADS.gold.maxY) {
+    return { level, detail: 'Iron zone · Gold below Y32' };
+  }
+  if (level > RESOURCE_LEADS.diamond.maxY) {
+    return { level, detail: 'Gold zone · Diamond below Y16' };
+  }
+  return { level, detail: 'Diamond zone' };
+}

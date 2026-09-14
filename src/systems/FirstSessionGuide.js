@@ -159,6 +159,7 @@ export class FirstSessionGuide {
     const invControl = isTouch ? 'Tap Inv' : 'Press E';
     const breakControl = isTouch ? 'hold Break' : 'hold left click';
     const placeControl = isTouch ? 'tap Place' : 'right click';
+    const interactControl = isTouch ? 'tap Place' : 'right click';
     const selectControl = isTouch ? 'tap its hotbar slot' : 'use 1-9 or the mouse wheel';
 
     switch (this.step) {
@@ -222,8 +223,8 @@ export class FirstSessionGuide {
         return {
           title: 'Establish your forge',
           hint: this._waitingForDawn
-            ? 'This night stays quiet. Mine more stone, craft a Stone Forge, and use it before the next sunset.'
-            : 'Mine enough Cobblestone to craft and place a Stone Forge, then interact with it to begin refining.',
+            ? `This night stays quiet. Craft and place a Stone Forge, then aim at it and ${interactControl} to open it before the next sunset.`
+            : `Mine enough Cobblestone to craft and place a Stone Forge, then aim at it and ${interactControl} to open it.`,
           progress: 'Recipe: 8 Cobblestone → Stone Forge',
           goal: true,
         };
